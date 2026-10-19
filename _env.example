@@ -1,0 +1,3 @@
+BOT_TOKEN=123456:ABC-your-token
+# ID админов через запятую
+ADMIN_IDS=123456789
