@@ -3,7 +3,7 @@
 
 Команды, которые ВЫ пишете в любом чате (бот правит ваше сообщение):
     .help           -> заменяется на текст справки (задаётся в админке)
-    .shab <номер>   -> заменяется на шаблон с кнопками (принять / отклонить ...)
+    .shab <номер>   -> заменяется на оффер с кнопками (принять / отклонить ...)
 
 Команды бота: /admin (админ-панель, только ADMIN_IDS), /info (как работает бот).
 
@@ -17,9 +17,9 @@
 
 Переменные в текстах:
     {v1}  имя (автоматически), жирным + премиум-эмодзи
-    {v2}  число из шаблона, жирным + премиум-эмодзи
+    {v2}  число из оффера, жирным + премиум-эмодзи
     {v3}  «звёзды» или «GRAM» (текст зависит от языка), жирным + премиум-эмодзи
-    {v4}  текст из шаблона с гиперссылкой
+    {v4}  текст из оффера с гиперссылкой
     {v5}  общая константа (для всех языков)
     {e:ID} премиум-эмодзи по ID в любом месте текста
 """
@@ -70,7 +70,7 @@ ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split("
 SUPERADMIN_ID = int(os.getenv("SUPERADMIN_ID", "0") or 0) or (min(ADMIN_IDS) if ADMIN_IDS else 0)
 DATA_FILE = Path(os.getenv("DATA_FILE", "data.json"))  # хранилище, если DATABASE_URL не задан
 
-# Хранилище в Postgres: шаблоны и настройки переживают перезапуски (на Render диск эфемерный)
+# Хранилище в Postgres: офферы и настройки переживают перезапуски (на Render диск эфемерный)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Webhook. На Render RENDER_EXTERNAL_URL задаётся автоматически; без него (локально) работает polling.
@@ -80,11 +80,11 @@ WEBHOOK_PATH = "/webhook"
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET") or hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:48]
 
 # Отключённый предпросмотр для служебных сообщений админки и .help.
-# Для экранов шаблона с {v4} используется preview_options() ниже.
+# Для экранов оффера с {v4} используется preview_options() ниже.
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 FALLBACK_EMOJI = "⭐"  # обычный эмодзи-заглушка внутри премиум-эмодзи
-MAX_REMEMBERED_MESSAGES = 5000  # сколько сообщений-шаблонов помнить (для имени на следующих экранах)
+MAX_REMEMBERED_MESSAGES = 5000  # сколько сообщений-офферов помнить (для имени на следующих экранах)
 # Telegram строит предпросмотр по URL, даже если он задан как гиперссылка в HTML.
 # show_above_text размещает карточку ссылки над текстом сообщения.
 def preview_options(tpl: dict, screen: str) -> LinkPreviewOptions:
@@ -95,7 +95,7 @@ def preview_options(tpl: dict, screen: str) -> LinkPreviewOptions:
         return LinkPreviewOptions(is_disabled=False, url=url, show_above_text=True)
     return LinkPreviewOptions(is_disabled=True)
 
-# Языки постоянных шаблонов (можно менять/добавлять — пресеты создадутся сами)
+# Языки постоянных офферов (можно менять/добавлять — пресеты создадутся сами)
 LANGS = {"ru": "🇷🇺 Русский", "en": "🇬🇧 English", "es": "🇪🇸 Español"}
 
 # Вариант переменной {v3}
@@ -111,7 +111,7 @@ NAME_MODES = [
     ("chat_full", "собеседник в чате · имя и фамилия"),
 ]
 
-# Блоки постоянных шаблонов: ключ, название в админке, тип
+# Блоки постоянных офферов: ключ, название в админке, тип
 #   html  — текст сообщения с форматированием
 #   label — название кнопки
 #   alert — текст всплывающего окна
@@ -137,9 +137,9 @@ BLOCK_KIND = {k: kind for k, _, kind in BLOCKS}
 BLOCK_TITLE = {k: title for k, title, _ in BLOCKS}
 SCREENS = {"main": "main_text", "reject": "reject_text", "accepted": "accepted_text", "s3": "screen3_text"}
 
-DEFAULT_HELP = "<b>Команды</b>\n\n.help — эта справка\n.shab &lt;номер&gt; — вставить шаблон"
+DEFAULT_HELP = "<b>Команды</b>\n\n.help — эта справка\n.shab &lt;номер&gt; — вставить оффер"
 
-# Стартовые тексты. Всё это переписывается в админке (🗂 Постоянные шаблоны).
+# Стартовые тексты. Всё это переписывается в админке (🗂 Постоянные офферы).
 DEFAULT_PRESETS = {
     "ru": {
         "main_text": "{v1}, вам доступно:\n\n{v2} {v3}\n\n{v4}",
@@ -229,7 +229,7 @@ class Storage:
             "help_html": DEFAULT_HELP,
             "presets": {},
             "settings": {},
-            "templates": {},  # "номер" -> шаблон
+            "templates": {},  # "номер" -> оффер
             "connections": {},  # business_connection_id -> {"user_id": ...}
             "business_chats": {},  # username lowercase -> {chat_id, business_connection_id, name}
             "messages": {},  # "chat_id:message_id" -> {"name": ...}
@@ -418,7 +418,7 @@ def link_url() -> str:
 
 
 def build_screen(n: str, tpl: dict, screen: str, name: str, icons: bool = True):
-    """Возвращает (html_текст, клавиатура) для экрана шаблона."""
+    """Возвращает (html_текст, клавиатура) для экрана оффера."""
     html_vars, plain_vars = make_vars(tpl, name)
 
     def btn(key: str, **kw) -> InlineKeyboardButton:
@@ -494,20 +494,20 @@ INFO_TEXT = (
     "(Настройки → Telegram для бизнеса → Чат-боты) и умеет править ваши сообщения в любых чатах.\n\n"
     "<b>Команды в чатах</b> (пишете вы, бот заменяет сообщение):\n"
     "• <code>.help</code> — справка\n"
-    "• <code>.shab номер</code> — сразу показать экран 1 шаблона\n"
-    "<b>Как идёт шаблон</b>\n"
+    "• <code>.shab номер</code> — сразу показать экран 1 оффера\n"
+    "<b>Как идёт оффер</b>\n"
     "1. Текст и кнопки «Принять» / «Отклонить».\n"
     "2. «Отклонить» → сообщение меняется на экран отказа.\n"
     "3. «Принять» → всплывающее окно с кнопкой OK, затем экран 2 с кнопкой-ссылкой и кнопкой «Далее».\n"
     "4. «Далее» → экран 3 с кнопкой-ссылкой и кнопкой, которая показывает второе всплывающее окно.\n\n"
     
-    "<b>Язык</b>: у каждого шаблона свой язык (ru / en / es) — от него зависят все тексты кнопок и экранов."
+    "<b>Язык</b>: у каждого оффера свой язык (ru / en / es) — от него зависят все тексты кнопок и экранов."
 )
 
 INFO_ADMIN = (
     "\n\n<b>Админ-панель</b> — /admin\n"
     "• 📖 Сообщение .help\n"
-    "• 🧩 Шаблоны — создаёте номер: язык, число, звёзды/GRAM/рубли, текст и ссылка на подарок\n"
+    "• 🧩 Офферы — создаёте номер: язык, число, звёзды/GRAM/рубли, текст и ссылка на подарок\n"
 )
 
 
@@ -621,7 +621,7 @@ async def on_business_message(message: Message, bot: Bot):
     if not tpl:
         log.error("Business command template missing: n=%s available=%s", n, list(db.data["templates"].keys()))
         command = "+conf" if conf_match else ".shab"
-        await notify_admins(bot, f"⚠️ Шаблон №{n} не найден (команда {command} {n}).")
+        await notify_admins(bot, f"⚠️ Оффер №{n} не найден (команда {command} {n}).")
         return
     name = pick_name(db.data["settings"]["name_mode"], message.from_user, message.chat)
     remember(message.chat.id, message.message_id, name)
@@ -677,15 +677,15 @@ async def on_business_message(message: Message, bot: Bot):
 
 @public.callback_query(F.data.startswith("cf:"))
 async def on_conf_callback(cq: CallbackQuery, bot: Bot):
-    """Кнопка «Продолжить» из +conf №: открывает экран 1 шаблона в том же Business-чате."""
+    """Кнопка «Продолжить» из +conf №: открывает экран 1 оффера в том же Business-чате."""
     try:
         n = str(int(cq.data.split(":", 1)[1]))
     except (ValueError, IndexError):
-        return await cq.answer("Некорректный номер шаблона", show_alert=True)
+        return await cq.answer("Некорректный номер оффера", show_alert=True)
     tpl = db.data["templates"].get(n)
     msg = cq.message
     if not tpl or not msg:
-        return await cq.answer("Шаблон не найден", show_alert=True)
+        return await cq.answer("Оффер не найден", show_alert=True)
     bcid = getattr(msg, "business_connection_id", None)
     if not bcid:
         return await cq.answer("Не найдено Business-подключение для этого сообщения", show_alert=True)
@@ -695,7 +695,7 @@ async def on_conf_callback(cq: CallbackQuery, bot: Bot):
                           bcids=[bcid], n=n, tpl=tpl, screen="main", name=name)
         await cq.answer()
     except Exception:  # noqa: BLE001
-        log.exception("Не удалось открыть экран 1 по +conf для шаблона %s", n)
+        log.exception("Не удалось открыть экран 1 по +conf для оффера %s", n)
         await cq.answer("Не удалось открыть экран 1", show_alert=True)
 
 
@@ -708,7 +708,7 @@ async def on_shab_callback(cq: CallbackQuery, bot: Bot):
     tpl = db.data["templates"].get(n)
     msg = cq.message
     if not tpl or not msg:
-        return await cq.answer("Шаблон не найден", show_alert=True)
+        return await cq.answer("Оффер не найден", show_alert=True)
 
     bcid = getattr(msg, "business_connection_id", None)
     # если у сообщения нет business_connection_id — пробуем обычное редактирование,
@@ -764,21 +764,21 @@ admin.callback_query.filter(F.from_user.id.func(lambda uid: uid in get_admin_ids
 
 
 class AdminCallbackPermissions(BaseMiddleware):
-    """Обычным админам разрешены только создание шаблонов и настройка {v5}/ссылки."""
+    """Обычным админам разрешены только создание офферов и настройка {v5}/ссылки."""
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if user and is_superadmin(user.id):
             return await handler(event, data)
         payload = getattr(event, "data", "") or ""
         allowed = (
-            payload in {"a:menu", "a:tpls", "a:new", "a:set", "s:e:v5_html", "s:e:link_url", "a:wsend_skip"}
+            payload in {"a:menu", "a:tpls", "a:new", "a:set", "s:e:v5_html", "s:e:link_url"}
+            or re.fullmatch(r"t:\d+(?::(?:card|prev|del|delok))?", payload)
             or re.fullmatch(r"a:wlang:(ru|en|es)", payload)
             or re.fullmatch(r"a:wchoice:(stars|gram|rub)", payload)
-            or re.fullmatch(r"a:waccount:\d+", payload)
         )
         if not allowed:
             if hasattr(event, "answer"):
-                await event.answer("Недостаточно прав. Доступ ограничен созданием шаблонов и настройками {v5}/ссылки.", show_alert=True)
+                await event.answer("Недостаточно прав. Доступ ограничен созданием офферов и настройками {v5}/ссылки.", show_alert=True)
             return None
         return await handler(event, data)
 
@@ -788,8 +788,7 @@ admin.callback_query.middleware(AdminCallbackPermissions())
 
 class S(StatesGroup):
     value = State()  # ждём значение; data: target, key
-    wiz = State()  # мастер создания шаблона; data: i, draft
-    wiz_recipient = State()  # после создания шаблона: необязательная отправка экран 1
+    wiz = State()  # мастер создания оффера; data: i, draft
     admin_add = State()  # супер-админ вводит Telegram ID нового админа
 
 
@@ -801,14 +800,14 @@ def kb(*rows) -> InlineKeyboardMarkup:
 
 MAIN_KB = kb(
     [("📖 Сообщение .help", "a:help")],
-    [("🧩 Шаблоны (.shab)", "a:tpls")],
+    [("🧩 Офферы (.shab)", "a:tpls")],
     [("📝 Тексты и кнопки", "a:pres")],
     [("⚙️ Настройки", "a:set")],
     [("❓ Синтаксис", "a:syntax")],
     [("👑 Управление админами", "a:admins")],
 )
 USER_MAIN_KB = kb(
-    [("🧩 Создать шаблон", "a:tpls")],
+    [("🧩 Создать оффер", "a:tpls")],
     [("🔧 Изменить юзернейм и ссылки кнопок", "a:set")],
 )
 
@@ -855,7 +854,7 @@ SET_TITLES = {
     "emoji_rub": ("Премиум-эмодзи после слова рублей (нужен id эмодзи)", HINT_EMOJI),
 }
 
-# Поля шаблона: ключ -> (название, подсказка)
+# Поля оффера: ключ -> (название, подсказка)
 TPL_TITLES = {
     "amount": ("Сумма сделки", "Отправьте число (например 100)."),
     "v4_text": ("Отправьте название нфт, пример: Plush Pepe #1234", "Отправьте текст — он станет гиперссылкой. «-» — очистить."),
@@ -884,7 +883,7 @@ def card_text(n: str, tpl: dict) -> str:
     choice = tpl["v3_choice"]
     v3 = db.data["presets"][tpl["lang"]]["v3_" + choice]
     lines = [
-        f"🧩 <b>Шаблон №{n}</b> · {LANGS[tpl['lang']]}",
+        f"🧩 <b>Оффер №{n}</b> · {LANGS[tpl['lang']]}",
         "",
         "{v1} = имя (автоматически)",
         f"{{v2}} = {html.escape(tpl['amount']) or '—'}",
@@ -910,7 +909,7 @@ def card_kb(n: str) -> InlineKeyboardMarkup:
 def settings_text(user_id: int | None = None) -> str:
     st = db.data["settings"]
     if user_id is not None and not is_superadmin(user_id):
-        return "\n".join(["🔧 <b>Настройки шаблонов</b>", "", f"Юзернейм кому передавать нфт: = {short(st['v5_html'])}", f"🔗 Ссылка кнопки передать нфт", f"Сейчас ведёт на: {html.escape(link_url())}"])
+        return "\n".join(["🔧 <b>Настройки офферов</b>", "", f"Юзернейм кому передавать нфт: = {short(st['v5_html'])}", f"🔗 Ссылка кнопки передать нфт", f"Сейчас ведёт на: {html.escape(link_url())}"])
     mode = dict(NAME_MODES).get(st["name_mode"], "—")
 
     def e(key: str) -> str:
@@ -1126,10 +1125,10 @@ async def settings_cb(cq: CallbackQuery, state: FSMContext):
         await cq.answer()
 
 
-# ── список шаблонов и мастер создания ──
+# ── список офферов и мастер создания ──
 WIZ = ["number", "lang", "amount", "v3", "v4_text", "v4_url"]
 WIZ_PROMPTS = {
-    "number": "Введите номер шаблона",
+    "number": "Введите номер оффера",
     "amount": "Сумма сделки (например 100).",
     "v4_text": "Название подарка. Пример: Plush Pepe #1234",
     "v4_url": "Ссылка на подарок. Пример: https://t.me/nft/PlushPepe-1234",
@@ -1146,12 +1145,12 @@ async def a_tpls(cq: CallbackQuery, state: FSMContext):
     items = sorted(db.data["templates"].items(), key=lambda x: int(x[0]))
     if is_superadmin(cq.from_user.id):
         rows = [[(f"№{n} · {LANGS[t['lang']]}", f"t:{n}")] for n, t in items]
-        rows += [[("➕ Создать шаблон", "a:new")], [("⬅️ Назад", "a:menu")]]
-        body = "🧩 <b>Шаблоны</b>" + ("" if items else "\nПока пусто.")
+        rows += [[("➕ Создать оффер", "a:new")], [("⬅️ Назад", "a:menu")]]
+        body = "🧩 <b>Офферы</b>" + ("" if items else "\nПока пусто.")
     else:
-        numbers = ", ".join(f"№{n}" for n, _ in items) or "пока нет"
-        rows = [[("➕ Создать шаблон", "a:new")], [("⬅️ Назад", "a:menu")]]
-        body = f"🧩 <b>Шаблоны</b>\nСуществующие шаблоны: {numbers}\n\nЗдесь ты можешь создать шаблоны для отправки в чат"
+        rows = [[(f"№{n} · {LANGS[t['lang']]}", f"t:{n}")] for n, t in items]
+        rows += [[("➕ Создать оффер", "a:new")], [("⬅️ Назад", "a:menu")]]
+        body = "🧩 <b>Офферы</b>" + ("" if items else "\nПока пусто.") + "\nВыберите оффер, чтобы открыть информацию и превью."
     await show(cq, body, kb(*rows))
 
 
@@ -1163,31 +1162,17 @@ async def wiz_step(msg: Message, state: FSMContext, draft: dict, i: int):
                    v4_text=draft["v4_text"], v4_url=draft["v4_url"])
         db.data["templates"][n] = tpl
         db.save()
-        await state.set_state(S.wiz_recipient)
-        await state.update_data(created_template=n)
-        connections = [(bcid, info) for bcid, info in db.data.get("connections", {}).items()
-                       if info.get("enabled", True)]
-        if not connections:
-            await msg.answer(
-                "📨 Шаблон создан. Нет активных Telegram Business-подключений, поэтому отправить экран 1 пока нельзя.",
-                reply_markup=kb([("⏭ Завершить", "a:wsend_skip")]),
-            )
-            return
-        await state.update_data(account_options=[bcid for bcid, _ in connections])
-        rows = [[(f"{info.get('name', 'Аккаунт')} · ID {info.get('user_id', '?')}", f"a:waccount:{i}")]
-                for i, (bcid, info) in enumerate(connections)]
-        rows.append([("⏭ Не отправлять", "a:wsend_skip")])
+        await state.clear()
         await msg.answer(
-            "📨 <b>Отправить экран 1 пользователю?</b>\n"
-            "Сначала выбери Business-аккаунт, от имени которого нужно отправить сообщение.",
-            reply_markup=kb(*rows),
+            f"✅ Оффер №{n} создан.\n\n" + card_text(n, tpl),
+            reply_markup=card_kb(n),
         )
         return
     await state.update_data(i=i, draft=draft)
     step = WIZ[i]
     if step == "lang":
         rows = [[(name, f"a:wlang:{code}")] for code, name in LANGS.items()]
-        await msg.answer("Выберите язык постоянного шаблона:", reply_markup=kb(*rows))
+        await msg.answer("Выберите язык постоянного оффера:", reply_markup=kb(*rows))
     elif step == "v3":
         await msg.answer("Выберите валюту сделки:",
                          reply_markup=kb([("⭐ Звёзды", "a:wchoice:stars"), ("💎 GRAM", "a:wchoice:gram"), ("₽ Рубли", "a:wchoice:rub")]))
@@ -1245,7 +1230,7 @@ async def wiz_message(message: Message, state: FSMContext):
         else:
             return await message.answer("Нужно число. Попробуйте ещё раз.")
         if number in db.data["templates"]:
-            return await message.answer("Шаблон с таким номером уже есть. Введите другой номер.")
+            return await message.answer("Оффер с таким номером уже есть. Введите другой номер.")
         draft["number"] = number
     elif step == "amount":
         if skip:
@@ -1263,90 +1248,7 @@ async def wiz_message(message: Message, state: FSMContext):
     await wiz_step(message, state, draft, i + 1)
 
 
-@admin.callback_query(S.wiz_recipient, F.data.startswith("a:waccount:"))
-async def wiz_send_account(cq: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    try:
-        index = int(cq.data.rsplit(":", 1)[1])
-        bcid = data["account_options"][index]
-    except (ValueError, IndexError, KeyError, TypeError):
-        return await cq.answer("Не удалось выбрать аккаунт. Начни заново.", show_alert=True)
-    connection = db.data.get("connections", {}).get(bcid, {})
-    if not connection.get("enabled", True):
-        return await cq.answer("Это Business-подключение отключено.", show_alert=True)
-    await state.update_data(selected_bcid=bcid)
-    await cq.answer()
-    await cq.message.answer(
-        "Теперь введи @username получателя. Отправка будет именно от аккаунта "
-        f"{html.escape(connection.get('name', str(connection.get('user_id', ''))))}.\n"
-        "Получатель должен быть известен чатам этого Business-подключения.",
-        reply_markup=kb([("⏭ Пропустить", "a:wsend_skip")]),
-    )
-
-
-@admin.callback_query(S.wiz_recipient, F.data == "a:wsend_skip")
-async def wiz_send_skip(cq: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await cq.answer("Отправку пропустили")
-    await cq.message.answer("Готово. Шаблон сохранён, сообщение не отправлялось.",
-                             reply_markup=main_kb_for(message.from_user.id))
-
-
-@admin.message(S.wiz_recipient)
-async def wiz_send_recipient(message: Message, state: FSMContext, bot: Bot):
-    if not message.text:
-        return await message.answer("Отправь @username текстом или нажми «Пропустить».")
-    username = message.text.strip().lstrip("@").lower()
-    if username in {"-", "пропустить", "skip"}:
-        await state.clear()
-        return await message.answer("Готово. Шаблон сохранён, сообщение не отправлялось.",
-                                    reply_markup=main_kb_for(message.from_user.id))
-    if not re.fullmatch(r"[a-z0-9_]{5,32}", username, re.I):
-        return await message.answer("Введи корректный username, например @username, или нажми «Пропустить».")
-
-    data = await state.get_data()
-    bcid = data.get("selected_bcid")
-    if not bcid:
-        return await message.answer("Сначала выбери Business-аккаунт в сообщении выше.")
-    chats = db.data.get("business_chats", {})
-    target = chats.get(f"{bcid}:{username}")
-    if not target:
-        legacy = chats.get(username)
-        if legacy and legacy.get("business_connection_id") == bcid:
-            target = legacy
-    if not target:
-        return await message.answer(
-            "❌ Не нашёл @username среди чатов выбранного Business-аккаунта.\n"
-            "Telegram Bot API не позволяет искать произвольные чаты только по username."
-        )
-    n = str(data.get("created_template", ""))
-    tpl = db.data["templates"].get(n)
-    target_bcid = target.get("business_connection_id")
-    connection = db.data["connections"].get(bcid, {})
-    if not tpl or not bcid or target_bcid != bcid or not connection.get("enabled", True):
-        return await message.answer(
-            "❌ Не удалось отправить: шаблон или активное Business-подключение не найдено.\n"
-            "Шаблон сохранён. Попробуй другой username или нажми «Пропустить»."
-        )
-    name = target.get("name") or ("@" + username)
-    try:
-        sent = await send_screen(
-            bot, int(target["chat_id"]), n, tpl, name,
-            screen="main", business_connection_id=bcid,
-        )
-        remember(sent.chat.id, sent.message_id, name)
-    except Exception as exc:  # noqa: BLE001 — сообщаем админу, шаблон уже сохранён
-        log.exception("Не удалось отправить экран 1 пользователю @%s", username)
-        return await message.answer(
-            "❌ Telegram не разрешил отправку этому чату.\n"
-            "Шаблон сохранён. Проверь, что Business-подключение активно и у бота есть права отправки."
-        )
-    await state.clear()
-    await message.answer(f"✅ Экран 1 отправлен пользователю @{username} от Business-аккаунта.",
-                         reply_markup=main_kb_for(message.from_user.id))
-
-
-# ── карточка шаблона и действия над ним ──
+# ── карточка оффера и действия над ним ──
 @admin.callback_query(F.data.startswith("t:"))
 async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
     parts = cq.data.split(":")
@@ -1354,7 +1256,7 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
     act = parts[2] if len(parts) > 2 else "card"
     tpl = db.data["templates"].get(n)
     if not tpl:
-        return await cq.answer("Шаблон не найден", show_alert=True)
+        return await cq.answer("Оффер не найден", show_alert=True)
 
     if act == "card":
         await state.clear()
@@ -1368,7 +1270,7 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
     elif act == "lang":
         rows = [[(name, f"t:{n}:sl:{code}")] for code, name in LANGS.items()]
         rows.append([("⬅️ Назад", f"t:{n}")])
-        await show(cq, "Выберите язык постоянного шаблона:", kb(*rows))
+        await show(cq, "Выберите язык постоянного оффера:", kb(*rows))
     elif act == "sl":
         if parts[3] in LANGS:
             tpl["lang"] = parts[3]
@@ -1376,12 +1278,13 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
         await show(cq, card_text(n, tpl), card_kb(n))
     elif act == "prev":
         name = pick_name(db.data["settings"]["name_mode"], cq.from_user, cq.message.chat)
-        sent = await send_screen(bot, cq.message.chat.id, n, tpl, name)
-        if sent:
-            remember(sent.chat.id, sent.message_id, name)
-        await cq.answer("Превью отправлено — кнопки работают")
+        text, markup = build_screen(n, tpl, "main", name, icons=True)
+        rows = list(markup.inline_keyboard) if markup else []
+        rows.append([InlineKeyboardButton(text="⬅️ Назад к офферу", callback_data=f"t:{n}")])
+        preview_markup = InlineKeyboardMarkup(inline_keyboard=rows)
+        await show(cq, f"👁 <b>Превью оффера №{n}</b>\n\n{text}", preview_markup)
     elif act == "del":
-        await show(cq, f"Удалить шаблон №{n}?", kb([("🗑 Да, удалить", f"t:{n}:delok"), ("✖️ Отмена", f"t:{n}")]))
+        await show(cq, f"Удалить оффер №{n}?", kb([("🗑 Да, удалить", f"t:{n}:delok"), ("✖️ Отмена", f"t:{n}")]))
     elif act == "delok":
         db.data["templates"].pop(n, None)
         db.save()
@@ -1390,12 +1293,12 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
         await cq.answer()
 
 
-# ── постоянные шаблоны (тексты по языкам) ──
+# ── постоянные офферы (тексты по языкам) ──
 @admin.callback_query(F.data == "a:pres")
 async def a_pres(cq: CallbackQuery, state: FSMContext):
     await state.clear()
     rows = [[(name, f"p:{code}")] for code, name in LANGS.items()] + [[("⬅️ Назад", "a:menu")]]
-    await show(cq, "🗂 <b>Постоянные шаблоны</b>\nВыберите язык. Эти тексты общие для всех шаблонов "
+    await show(cq, "🗂 <b>Постоянные офферы</b>\nВыберите язык. Эти тексты общие для всех офферов "
                    "этого языка; в них используются переменные {v1}…{v5}.", kb(*rows))
 
 
@@ -1454,7 +1357,7 @@ async def on_value(message: Message, state: FSMContext):
     elif target.startswith("pre:"):
         lang = target[4:]
         if clear:
-            return await message.answer("В постоянном шаблоне блок нельзя очистить — отправьте новый текст.")
+            return await message.answer("В постоянном оффере блок нельзя очистить — отправьте новый текст.")
         value = await read_block(key, message)
         if value is None:
             return
@@ -1530,3 +1433,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
