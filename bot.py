@@ -773,11 +773,14 @@ class AdminCallbackPermissions(BaseMiddleware):
             return await handler(event, data)
         payload = getattr(event, "data", "") or ""
         allowed = (
-            payload in {"a:menu", "a:tpls", "a:new", "a:set", "s:e:v5_html", "s:e:link_url"}
-            or re.fullmatch(r"t:\d+(?::(?:card|prev|del|delok))?", payload)
-            or re.fullmatch(r"a:wlang:(ru|en|es)", payload)
-            or re.fullmatch(r"a:wchoice:(stars|gram|rub)", payload)
-        )
+    payload in {
+        "a:menu", "a:tpls", "a:new", "a:set",
+        "s:e:v5_html", "s:e:link_url",
+    }
+    or re.fullmatch(r"t:\d+(?::(?:card|prev|del|delok|e:[a-zA-Z0-9_]+|v3|lang|sl:[a-z]+))?", payload)
+    or re.fullmatch(r"a:wlang:(ru|en|es)", payload)
+    or re.fullmatch(r"a:wchoice:(stars|gram|rub)", payload)
+)
         if not allowed:
             if hasattr(event, "answer"):
                 await event.answer("Недостаточно прав. Доступ ограничен созданием офферов и настройками {v5}/ссылки.", show_alert=True)
