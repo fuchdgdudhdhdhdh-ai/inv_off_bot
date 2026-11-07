@@ -1,28 +1,4 @@
-"""
-Каркас Telegram-бота (aiogram 3.x), работающего через Telegram Business (автоматизация чатов).
 
-Команды, которые ВЫ пишете в любом чате (бот правит ваше сообщение):
-    .help           -> заменяется на текст справки (задаётся в админке)
-    .shab <номер>   -> заменяется на оффер с кнопками (принять / отклонить ...)
-
-Команды бота: /admin (админ-панель, только ADMIN_IDS), /info (как работает бот).
-
-Переменные окружения (секреты в репозиторий не кладём):
-    BOT_TOKEN       токен бота (обязательно)
-    SUPERADMIN_ID   Telegram ID единственного суперадмина (обязательно)
-    ADMIN_IDS       старые ID админов для миграции (необязательно)
-    DATABASE_URL    Postgres для хранения данных (рекомендуется на Render; иначе файл data.json)
-    WEBHOOK_URL     публичный URL сервиса (на Render берётся из RENDER_EXTERNAL_URL сам)
-    WEBHOOK_SECRET  секрет вебхука (необязательно)
-
-Переменные в текстах:
-    {v1}  имя (автоматически), жирным + премиум-эмодзи
-    {v2}  число из оффера, жирным + премиум-эмодзи
-    {v3}  «звёзды» или «GRAM» (текст зависит от языка), жирным + премиум-эмодзи
-    {v4}  текст из оффера с гиперссылкой
-    {v5}  общая константа (для всех языков)
-    {e:ID} премиум-эмодзи по ID в любом месте текста
-"""
 import asyncio
 import hashlib
 import html
@@ -45,6 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from aiogram.types import (
+    BufferedInputFile,
     BusinessConnection,
     CallbackQuery,
     InlineKeyboardButton,
@@ -213,7 +190,7 @@ DEFAULT_SETTINGS = {
     "emoji_rub": "",  # после {v3}, если выбраны рубли
     "emoji_usdt": "",  # после {v3}, если выбран USDT
     "name_mode": "sender_first",
-    "notify_mode": "super",  # super — уведомления только суперадмину, all — всем админам
+    "notify_mode": "super",  # super — уведомления только суперадмину, all — всем админам (кроме менеджеров)
 }
 
 
@@ -228,6 +205,38 @@ def new_template(lang: str) -> dict:
     }
 
 
+def tpl_key(owner_id, n) -> str:
+    """Ключ оффера в хранилище: офферы персональные, номер уникален внутри админа."""
+    return f"{owner_id}:{n}"
+
+
+def owner_templates(owner_id) -> dict:
+    """Офферы конкретного админа в виде {"номер": оффер}."""
+    prefix = f"{owner_id}:"
+    return {
+        key.split(":", 1)[1]: tpl
+        for key, tpl in db.data["templates"].items()
+        if key.startswith(prefix)
+    }
+
+
+def get_tpl(owner_id, n: str) -> dict | None:
+    """Оффер по владельцу и номеру. Без владельца — первый попавшийся с таким номером."""
+    if owner_id:
+        return db.data["templates"].get(tpl_key(owner_id, n))
+    for key, tpl in db.data["templates"].items():
+        if key.split(":", 1)[1] == n:
+            return tpl
+    return None
+
+
+def owner_of_bcid(bcid: str | None):
+    """Владелец бизнес-подключения — по нему определяется, чьи офферы использовать."""
+    if not bcid:
+        return None
+    return (db.data["connections"].get(bcid) or {}).get("user_id")
+
+
 class Storage:
     def __init__(self, path: Path, database_url: str = ""):
         self.path = path
@@ -237,7 +246,9 @@ class Storage:
             "help_html": DEFAULT_HELP,
             "presets": {},
             "settings": {},
-            "templates": {},  # "номер" -> оффер
+            "admins": [],
+            "managers": [],  # могут выдавать админку, уведомления им не приходят
+            "templates": {},  # "owner_id:номер" -> оффер
             "connections": {},  # business_connection_id -> {"user_id": ...}
             "business_chats": {},  # username lowercase -> {chat_id, business_connection_id, name}
             "messages": {},  # "chat_id:message_id" -> {"name": ...}
@@ -250,6 +261,7 @@ class Storage:
         self.data.setdefault("business_chats", {})
         self.data.setdefault("gift_cache", {})
         self.data.setdefault("gift_next", {})
+        self.data.setdefault("managers", [])
         old_settings = self.data.get("settings", {})
         self.data["settings"] = {**DEFAULT_SETTINGS, **old_settings}
         # Совместимость со старым единым эмодзи после {v2}.
@@ -260,6 +272,11 @@ class Storage:
             preset = self.data["presets"].setdefault(lang, {})
             for key, value in DEFAULT_PRESETS.get(lang, DEFAULT_PRESETS["ru"]).items():
                 preset.setdefault(key, value)
+        # Офферы стали персональными: старые общие (ключи без ":") отдаём суперадмину.
+        migrated = {}
+        for key, tpl in self.data["templates"].items():
+            migrated[key if ":" in key else tpl_key(SUPERADMIN_ID, key)] = tpl
+        self.data["templates"] = migrated
         for tpl in self.data["templates"].values():
             for key, value in new_template(tpl.get("lang", "ru")).items():
                 tpl.setdefault(key, value)
@@ -305,21 +322,36 @@ class Storage:
 
 db = Storage(DATA_FILE, DATABASE_URL)
 # Перенос старой конфигурации: первый/указанный супер-админ, остальные ADMIN_IDS — обычные.
+db.data["managers"] = [int(x) for x in db.data.get("managers", [])
+                       if str(x).isdigit() and int(x) != SUPERADMIN_ID]
 if "admins" not in db.data:
-    db.data["admins"] = sorted(ADMIN_IDS - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()))
+    db.data["admins"] = sorted(ADMIN_IDS - ({SUPERADMIN_ID} if SUPERADMIN_ID else set())
+                               - set(db.data["managers"]))
     db.save()
 else:
-    db.data["admins"] = [int(x) for x in db.data.get("admins", []) if str(x).isdigit() and int(x) != SUPERADMIN_ID]
+    db.data["admins"] = [int(x) for x in db.data.get("admins", [])
+                         if str(x).isdigit() and int(x) != SUPERADMIN_ID
+                         and int(x) not in db.data["managers"]]
 
 
 def get_admin_ids() -> set[int]:
     ids = {SUPERADMIN_ID} if SUPERADMIN_ID else set()
     ids.update(int(x) for x in db.data.get("admins", []))
+    ids.update(int(x) for x in db.data.get("managers", []))
     return ids
 
 
 def is_superadmin(user_id: int | None) -> bool:
     return bool(user_id and SUPERADMIN_ID and user_id == SUPERADMIN_ID)
+
+
+def is_manager(user_id: int | None) -> bool:
+    return bool(user_id and int(user_id) in db.data.get("managers", []))
+
+
+def is_staff(user_id: int | None) -> bool:
+    """Суперадмин или менеджер — те, кто управляет администраторами."""
+    return is_superadmin(user_id) or is_manager(user_id)
 
 
 # ───────────────────────────── Подключения и права ─────────────────────────────
@@ -358,6 +390,8 @@ def mark(value) -> str:
 def admin_label(uid) -> str:
     if is_superadmin(uid):
         return "👑 суперадмин"
+    if is_manager(uid):
+        return "🧑‍💼 менеджер"
     return "🛠 админ" if uid in get_admin_ids() else "❔ не админ"
 
 
@@ -672,6 +706,7 @@ INFO_ADMIN = (
     "\n\n<b>Админ-панель</b> — /admin\n"
     "• 📖 Сообщение .help\n"
     "• 🧩 Офферы — создаёте номер: язык, сумма, звёзды/GRAM/рубли/USDT, название нфт и ссылка на подарок\n"
+    "• 📤 /dump_texts — выгрузка всех текстов по всем языкам файлом\n"
 )
 
 
@@ -701,9 +736,13 @@ async def get_owner_id(bot: Bot, bcid: str) -> int:
 
 
 async def notify_admins(bot: Bot, text: str) -> None:
-    """Уведомления. По умолчанию — только суперадмину и всегда без звука."""
+    """Уведомления. По умолчанию — только суперадмину и всегда без звука.
+    Менеджеры уведомлений не получают никогда."""
     mode = db.data["settings"].get("notify_mode", "super")
-    ids = {SUPERADMIN_ID} if mode == "super" else get_admin_ids()
+    if mode == "super":
+        ids = {SUPERADMIN_ID} if SUPERADMIN_ID else set()
+    else:
+        ids = get_admin_ids() - {int(x) for x in db.data.get("managers", [])}
     for admin_id in ids:
         try:
             await bot.send_message(admin_id, text, disable_notification=True,
@@ -795,9 +834,10 @@ async def on_business_message(message: Message, bot: Bot):
         log.warning("Business command syntax did not match: text=%r bcid=%s", text, bcid)
         return
     n = str(int((m or conf_match).group(1)))
-    tpl = db.data["templates"].get(n)
+    # Офферы персональные: берём оффер владельца этого бизнес-аккаунта.
+    tpl = get_tpl(owner_id, n)
     if not tpl:
-        log.error("Business command template missing: n=%s available=%s", n, list(db.data["templates"].keys()))
+        log.error("Business command template missing: owner=%s n=%s", owner_id, n)
         command = "+conf" if conf_match else ".shab"
         await notify_admins(bot, f"⚠️ Оффер №{n} не найден (команда {command} {n}).")
         return
@@ -860,13 +900,13 @@ async def on_conf_callback(cq: CallbackQuery, bot: Bot):
         n = str(int(cq.data.split(":", 1)[1]))
     except (ValueError, IndexError):
         return await cq.answer("Некорректный номер оффера", show_alert=True)
-    tpl = db.data["templates"].get(n)
     msg = cq.message
-    if not tpl or not msg:
-        return await cq.answer("Оффер не найден", show_alert=True)
-    bcid = getattr(msg, "business_connection_id", None)
-    if not bcid:
+    bcid = getattr(msg, "business_connection_id", None) if msg else None
+    if not msg or not bcid:
         return await cq.answer("Не найдено Business-подключение для этого сообщения", show_alert=True)
+    tpl = get_tpl(owner_of_bcid(bcid), n)
+    if not tpl:
+        return await cq.answer("Оффер не найден", show_alert=True)
     name = recall_name(msg.chat.id, msg.message_id)
     try:
         await edit_screen(bot, chat_id=msg.chat.id, message_id=msg.message_id,
@@ -883,15 +923,17 @@ async def on_shab_callback(cq: CallbackQuery, bot: Bot):
         _, n, action = cq.data.split(":")
     except ValueError:
         return await cq.answer()
-    tpl = db.data["templates"].get(n)
     msg = cq.message
-    if not tpl or not msg:
+    if not msg:
         return await cq.answer("Оффер не найден", show_alert=True)
 
     bcid = getattr(msg, "business_connection_id", None)
     # если у сообщения нет business_connection_id — пробуем обычное редактирование,
     # затем известные бизнес-подключения
     bcids = [bcid] if bcid else [None, *db.data["connections"]]
+    tpl = get_tpl(owner_of_bcid(bcid), n)
+    if not tpl:
+        return await cq.answer("Оффер не найден", show_alert=True)
     name = recall_name(msg.chat.id, msg.message_id)
 
     async def go(screen: str):
@@ -942,18 +984,25 @@ admin.callback_query.filter(F.from_user.id.func(lambda uid: uid in get_admin_ids
 
 
 class AdminCallbackPermissions(BaseMiddleware):
-    """Обычным админам разрешены создание и редактирование полей офферов."""
+    """Обычным админам и менеджерам разрешены создание и редактирование полей своих офферов.
+    Управление администраторами — только менеджерам и суперадмину."""
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if user and is_superadmin(user.id):
             return await handler(event, data)
         payload = getattr(event, "data", "") or ""
         allowed = (
-            payload in {"a:menu", "a:tpls", "a:new", "a:set", "s:e:v5_html", "s:e:link_url"}
+            payload in {"a:menu", "a:tpls", "a:new", "a:set", "a:syntax",
+                        "s:e:v5_html", "s:e:link_url", "d:dump"}
             or re.fullmatch(r"t:\d+(?::(?:card|prev|del|delok|v3|lang|e:(?:amount|v4_text|v4_url)|sl:(?:ru|en|es)))?", payload)
             or re.fullmatch(r"a:wlang:(ru|en|es)", payload)
             or re.fullmatch(r"a:wchoice:(stars|gram|rub|usdt)", payload)
         )
+        if not allowed and user and is_manager(user.id):
+            allowed = (
+                payload in {"a:admins", "a:admin_add"}
+                or payload.startswith("a:admin_del:")
+            )
         if not allowed:
             if hasattr(event, "answer"):
                 await event.answer("Недостаточно прав для этого действия.", show_alert=True)
@@ -967,7 +1016,7 @@ admin.callback_query.middleware(AdminCallbackPermissions())
 class S(StatesGroup):
     value = State()  # ждём значение; data: target, key
     wiz = State()  # мастер создания оффера; data: i, draft
-    admin_add = State()  # супер-админ вводит Telegram ID нового админа
+    admin_add = State()  # ввод Telegram ID нового админа/менеджера; data: role
 
 
 def kb(*rows) -> InlineKeyboardMarkup:
@@ -983,16 +1032,25 @@ MAIN_KB = kb(
     [("📝 Тексты и кнопки", "a:pres")],
     [("⚙️ Настройки", "a:set")],
     [("❓ Синтаксис", "a:syntax")],
-    [("👑 Управление админами", "a:admins")],
+    [("👥 Управление админами", "a:admins")],
 )
 USER_MAIN_KB = kb(
     [("🧩 Создать оффер", "a:tpls")],
     [("🔧 Изменить юзернейм и ссылки кнопок", "a:set")],
 )
+MANAGER_MAIN_KB = kb(
+    [("🧩 Создать оффер", "a:tpls")],
+    [("🔧 Изменить юзернейм и ссылки кнопок", "a:set")],
+    [("👥 Управление админами", "a:admins")],
+)
 
 
 def main_kb_for(user_id: int) -> InlineKeyboardMarkup:
-    return MAIN_KB if is_superadmin(user_id) else USER_MAIN_KB
+    if is_superadmin(user_id):
+        return MAIN_KB
+    if is_manager(user_id):
+        return MANAGER_MAIN_KB
+    return USER_MAIN_KB
 
 SYNTAX_TEXT = (
     "❓ <b>Синтаксис</b>\n\n"
@@ -1032,7 +1090,7 @@ SET_TITLES = {
     "emoji_stars": ("Премиум-эмодзи после слова звёзды (нужен id эмодзи) (звёзды)", HINT_EMOJI),
     "emoji_gram": ("Премиум-эмодзи после слова gram (нужен id эмодзи) (GRAM)", HINT_EMOJI),
     "emoji_rub": ("Премиум-эмодзи после слова рублей (нужен id эмодзи)", HINT_EMOJI),
-    "emoji_usdt": ("Премиум-эмодзи после USDT (нужен id эмодзи)", HINT_EMOJI),
+    "emoji_usdt": ("Премиум-эмодзи после слова USDT (нужен id эмодзи)", HINT_EMOJI),
 }
 
 # Поля оффера: ключ -> (название, подсказка)
@@ -1079,6 +1137,7 @@ def card_text(n: str, tpl: dict) -> str:
         f"🎁 Кому передавать NFT: {short(db.data['settings']['v5_html'])}",
         "",
         f"Команда в чате: <code>.shab {n}</code>",
+        "Оффер личный: работает только под вашим Business-аккаунтом.",
     ]
     return "\n".join(lines)
 
@@ -1098,7 +1157,7 @@ def settings_text(user_id: int | None = None) -> str:
     if user_id is not None and not is_superadmin(user_id):
         return "\n".join(["🔧 <b>Настройки офферов</b>", "", f"Юзернейм кому передавать нфт: = {short(st['v5_html'])}", f"🔗 Ссылка кнопки передать нфт", f"Сейчас ведёт на: {html.escape(link_url())}"])
     mode = dict(NAME_MODES).get(st["name_mode"], "—")
-    notify = "только суперадмину (тихо)" if st.get("notify_mode", "super") == "super" else "всем админам"
+    notify = "только суперадмину (тихо)" if st.get("notify_mode", "super") == "super" else "всем админам (кроме менеджеров)"
 
     def e(key: str) -> str:
         return f"<code>{st[key]}</code>" if st[key] else "—"
@@ -1134,10 +1193,12 @@ SETTINGS_KB = kb(
     [("₽ Рубли", "s:e:emoji_rub"), ("💵 USDT", "s:e:emoji_usdt")],
     [("👤 Сменить источник имени", "s:name")],
     [("🔔 Кому уведомления", "s:notify")],
+    [("📤 Выгрузить все тексты", "d:dump")],
     [("⬅️ Назад", "a:menu")],
 )
 USER_SETTINGS_KB = kb(
     [("✏️ Изменить юзернейм", "s:e:v5_html"), ("🔗 Ссылка кнопок", "s:e:link_url")],
+    [("📤 Выгрузить все тексты", "d:dump")],
     [("⬅️ Назад", "a:menu")],
 )
 
@@ -1153,7 +1214,8 @@ def current_value(target: str, key: str) -> str:
         return db.data["settings"][key]
     if target.startswith("pre:"):
         return db.data["presets"][target[4:]][key]
-    return db.data["templates"][target[4:]][key]
+    _, owner, n = target.split(":")
+    return db.data["templates"].get(tpl_key(owner, n), {}).get(key, "")
 
 
 def make_prompt(target: str, key: str) -> str:
@@ -1199,6 +1261,47 @@ async def cmd_info_admin(message: Message):
     await message.answer(info_text(True))
 
 
+# ── выгрузка всех текстов (для зашивания в код) ──
+def dump_bytes(user_id: int) -> bytes:
+    payload = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "langs": LANGS,
+        "help_html": db.data["help_html"],
+        "settings": dict(db.data["settings"]),
+        "presets": {lang: dict(db.data["presets"].get(lang, {})) for lang in LANGS},
+    }
+    if is_superadmin(user_id):
+        payload["templates"] = dict(db.data["templates"])
+    else:
+        payload["templates"] = {k: v for k, v in owner_templates(user_id).items()}
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+DUMP_CAPTION = ("📤 Все тексты шаблонов по всем языкам. Пришлите этот файл, чтобы тексты "
+                "зашили в код как значения по умолчанию.")
+
+
+@admin.message(Command("dump_texts", "dump"))
+async def cmd_dump_texts(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer_document(
+        BufferedInputFile(dump_bytes(message.from_user.id),
+                          filename=f"texts_{int(time.time())}.json"),
+        caption=DUMP_CAPTION,
+    )
+
+
+@admin.callback_query(F.data == "d:dump")
+async def cb_dump_texts(cq: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await cq.message.answer_document(
+        BufferedInputFile(dump_bytes(cq.from_user.id),
+                          filename=f"texts_{int(time.time())}.json"),
+        caption=DUMP_CAPTION,
+    )
+    await cq.answer()
+
+
 @admin.callback_query(F.data == "a:menu")
 async def a_menu(cq: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -1227,7 +1330,7 @@ async def a_conns(cq: CallbackQuery, state: FSMContext):
     rows.append([("📊 Сводка по подаркам", "a:conns:gifts")])
     rows.append([("⬅️ Назад", "a:menu")])
     body = (f"🔌 <b>Подключения</b> — {len(items)}\n\n"
-            "🟢 активно · ⚪️ отключено · 👑/🛠 админ · ❔ не админ")
+            "🟢 активно · ⚪️ отключено · 👑/🧑‍💼/🛠 админ · ❔ не админ")
     await show(cq, body, kb(*rows))
 
 
@@ -1423,39 +1526,75 @@ async def conn_cb(cq: CallbackQuery, bot: Bot):
     await cq.answer()
 
 
-# ── управление обычными администраторами (только супер-админ) ──
+# ── управление администраторами (суперадмин и менеджеры) ──
 def admins_text() -> str:
-    ids = sorted(get_admin_ids() - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()))
-    lines = ["👑 <b>Управление администраторами</b>", "", f"Суперадмин: <code>{SUPERADMIN_ID}</code>", ""]
-    if ids:
-        lines.extend(f"• <code>{uid}</code>" for uid in ids)
-    else:
-        lines.append("Обычных администраторов пока нет.")
+    managers = sorted(int(x) for x in db.data.get("managers", []))
+    ids = sorted(get_admin_ids() - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()) - set(managers))
+    lines = [
+        "👥 <b>Управление администраторами</b>",
+        "",
+        f"👑 суперадмин: <code>{SUPERADMIN_ID}</code>",
+        "",
+        "🧑‍💼 <b>Менеджеры</b> — полный админский доступ + выдача админок, "
+        "уведомления им не приходят:",
+    ]
+    lines.extend(f"• <code>{uid}</code>" for uid in managers)
+    if not managers:
+        lines.append("• пока нет")
+    lines += ["", "🛠 <b>Админы</b> — создают свои офферы и меняют юзернейм/ссылку:"]
+    lines.extend(f"• <code>{uid}</code>" for uid in ids)
+    if not ids:
+        lines.append("• пока нет")
     return "\n".join(lines)
+
+
+def admins_kb(user_id: int) -> InlineKeyboardMarkup:
+    managers = sorted(int(x) for x in db.data.get("managers", []))
+    ids = sorted(get_admin_ids() - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()) - set(managers))
+    rows = []
+    if is_superadmin(user_id):
+        rows += [[(f"🗑 менеджер {uid}", f"a:admin_del:{uid}")] for uid in managers]
+    rows += [[(f"🗑 админ {uid}", f"a:admin_del:{uid}")] for uid in ids]
+    rows.append([("➕ Добавить админа", "a:admin_add")])
+    if is_superadmin(user_id):
+        rows.append([("➕ Добавить менеджера", "a:admin_add_mgr")])
+    rows.append([("⬅️ Назад", "a:menu")])
+    return kb(*rows)
 
 
 @admin.callback_query(F.data == "a:admins")
 async def a_admins(cq: CallbackQuery, state: FSMContext):
-    if not is_superadmin(cq.from_user.id):
-        return await cq.answer("Только суперадмин может управлять администраторами", show_alert=True)
+    if not is_staff(cq.from_user.id):
+        return await cq.answer("Недостаточно прав", show_alert=True)
     await state.clear()
-    ids = sorted(get_admin_ids() - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()))
-    rows = [[(f"🗑 Удалить {uid}", f"a:admin_del:{uid}")] for uid in ids]
-    rows += [[("➕ Добавить админа", "a:admin_add")], [("⬅️ Назад", "a:menu")]]
-    await show(cq, admins_text(), kb(*rows))
+    await show(cq, admins_text(), admins_kb(cq.from_user.id))
+
+
+async def start_admin_add(cq: CallbackQuery, state: FSMContext, role: str):
+    if role == "manager" and not is_superadmin(cq.from_user.id):
+        return await cq.answer("Менеджеров назначает только суперадмин", show_alert=True)
+    await state.set_state(S.admin_add)
+    await state.update_data(role=role)
+    title = "менеджера" if role == "manager" else "администратора"
+    await show(cq, f"Отправьте числовой Telegram ID пользователя, которого нужно сделать {title}.",
+               kb([("✖️ Отмена", "a:admins")]))
 
 
 @admin.callback_query(F.data == "a:admin_add")
 async def a_admin_add(cq: CallbackQuery, state: FSMContext):
-    if not is_superadmin(cq.from_user.id):
-        return await cq.answer("Только суперадмин", show_alert=True)
-    await state.set_state(S.admin_add)
-    await show(cq, "Отправьте числовой Telegram ID пользователя, которого нужно сделать обычным администратором.", kb([("✖️ Отмена", "a:admins")]))
+    await start_admin_add(cq, state, "admin")
+
+
+@admin.callback_query(F.data == "a:admin_add_mgr")
+async def a_admin_add_mgr(cq: CallbackQuery, state: FSMContext):
+    await start_admin_add(cq, state, "manager")
 
 
 @admin.message(S.admin_add)
 async def admin_add_message(message: Message, state: FSMContext):
-    if not is_superadmin(message.from_user.id):
+    d = await state.get_data()
+    role = d.get("role", "admin")
+    if role == "manager" and not is_superadmin(message.from_user.id):
         await state.clear()
         return await message.answer("Недостаточно прав.")
     raw = (message.text or "").strip()
@@ -1464,32 +1603,36 @@ async def admin_add_message(message: Message, state: FSMContext):
     uid = int(raw)
     if uid == SUPERADMIN_ID:
         return await message.answer("Этот пользователь уже суперадмин.")
-    admins = set(get_admin_ids())
-    if uid in admins:
+    if uid in get_admin_ids():
         await state.clear()
-        return await message.answer("Этот пользователь уже администратор.", reply_markup=kb([("⬅️ К администраторам", "a:admins")]))
-    db.data.setdefault("admins", []).append(uid)
-    db.data["admins"] = sorted(set(int(x) for x in db.data["admins"]))
+        return await message.answer("Этот пользователь уже имеет доступ.",
+                                    reply_markup=kb([("⬅️ К администраторам", "a:admins")]))
+    target = db.data.setdefault("managers" if role == "manager" else "admins", [])
+    target.append(uid)
+    db.data["admins"] = sorted(set(int(x) for x in db.data["admins"]) - set(db.data["managers"]))
+    db.data["managers"] = sorted(set(int(x) for x in db.data["managers"]))
     db.save()
     await state.clear()
-    await message.answer(f"✅ Пользователь <code>{uid}</code> добавлен как обычный администратор.", reply_markup=kb([("⬅️ К администраторам", "a:admins")]))
+    word = "менеджером" if role == "manager" else "обычным администратором"
+    await message.answer(f"✅ Пользователь <code>{uid}</code> добавлен как {word}.",
+                         reply_markup=kb([("⬅️ К администраторам", "a:admins")]))
 
 
 @admin.callback_query(F.data.startswith("a:admin_del:"))
 async def a_admin_del(cq: CallbackQuery, state: FSMContext):
-    if not is_superadmin(cq.from_user.id):
-        return await cq.answer("Только суперадмин", show_alert=True)
+    if not is_staff(cq.from_user.id):
+        return await cq.answer("Недостаточно прав", show_alert=True)
     try:
         uid = int(cq.data.rsplit(":", 1)[1])
     except ValueError:
         return await cq.answer("Некорректный ID", show_alert=True)
+    if uid in db.data.get("managers", []) and not is_superadmin(cq.from_user.id):
+        return await cq.answer("Менеджера может снять только суперадмин", show_alert=True)
     db.data["admins"] = [int(x) for x in db.data.get("admins", []) if int(x) != uid]
+    db.data["managers"] = [int(x) for x in db.data.get("managers", []) if int(x) != uid]
     db.save()
     await state.clear()
-    ids = sorted(get_admin_ids() - ({SUPERADMIN_ID} if SUPERADMIN_ID else set()))
-    rows = [[(f"🗑 Удалить {x}", f"a:admin_del:{x}")] for x in ids]
-    rows += [[("➕ Добавить админа", "a:admin_add")], [("⬅️ Назад", "a:menu")]]
-    await show(cq, admins_text(), kb(*rows))
+    await show(cq, admins_text(), admins_kb(cq.from_user.id))
 
 
 # ── .help ──
@@ -1545,22 +1688,20 @@ WIZ_PROMPTS = {
 }
 
 
-def next_free_number() -> str:
-    return str(max([int(k) for k in db.data["templates"]] or [0]) + 1)
+def next_free_number(owner_id) -> str:
+    nums = [int(k) for k in owner_templates(owner_id)] or [0]
+    return str(max(nums) + 1)
 
 
 @admin.callback_query(F.data == "a:tpls")
 async def a_tpls(cq: CallbackQuery, state: FSMContext):
     await state.clear()
-    items = sorted(db.data["templates"].items(), key=lambda x: int(x[0]))
-    if is_superadmin(cq.from_user.id):
-        rows = [[(f"№{n} · {LANGS[t['lang']]}", f"t:{n}")] for n, t in items]
-        rows += [[("➕ Создать оффер", "a:new")], [("⬅️ Назад", "a:menu")]]
-        body = "🧩 <b>Офферы</b>" + ("" if items else "\nПока пусто.")
-    else:
-        rows = [[(f"№{n} · {LANGS[t['lang']]}", f"t:{n}")] for n, t in items]
-        rows += [[("➕ Создать оффер", "a:new")], [("⬅️ Назад", "a:menu")]]
-        body = "🧩 <b>Офферы</b>" + ("" if items else "\nПока пусто.") + "\nВыберите оффер, чтобы открыть информацию и превью."
+    items = sorted(owner_templates(cq.from_user.id).items(), key=lambda x: int(x[0]))
+    rows = [[(f"№{n} · {LANGS[t['lang']]}", f"t:{n}")] for n, t in items]
+    rows += [[("➕ Создать оффер", "a:new")], [("⬅️ Назад", "a:menu")]]
+    body = "🧩 <b>Ваши офферы</b>" + (
+        "" if items else "\nПока пусто.")
+    body += "\nОфферы личные: команда <code>.shab номер</code> работает под вашим Business-аккаунтом."
     await show(cq, body, kb(*rows))
 
 
@@ -1570,7 +1711,7 @@ async def wiz_step(msg: Message, state: FSMContext, draft: dict, i: int):
         tpl = new_template(draft["lang"])
         tpl.update(amount=draft["amount"], v3_choice=draft["v3_choice"],
                    v4_text=draft["v4_text"], v4_url=draft["v4_url"])
-        db.data["templates"][n] = tpl
+        db.data["templates"][tpl_key(draft["owner"], n)] = tpl
         db.save()
         await state.clear()
         await msg.answer(
@@ -1592,7 +1733,8 @@ async def wiz_step(msg: Message, state: FSMContext, draft: dict, i: int):
 
 @admin.callback_query(F.data == "a:new")
 async def a_new(cq: CallbackQuery, state: FSMContext):
-    draft = {"number": "", "lang": "ru", "amount": "", "v3_choice": "stars", "v4_text": "", "v4_url": ""}
+    draft = {"owner": cq.from_user.id, "number": "", "lang": "ru", "amount": "",
+             "v3_choice": "stars", "v4_text": "", "v4_url": ""}
     await state.set_state(S.wiz)
     await cq.answer()
     await wiz_step(cq.message, state, draft, 0)
@@ -1634,13 +1776,13 @@ async def wiz_message(message: Message, state: FSMContext):
 
     if step == "number":
         if skip:
-            number = next_free_number()
+            number = next_free_number(draft["owner"])
         elif text.isdigit():
             number = str(int(text))
         else:
             return await message.answer("Нужно число. Попробуйте ещё раз.")
-        if number in db.data["templates"]:
-            return await message.answer("Оффер с таким номером уже есть. Введите другой номер.")
+        if tpl_key(draft["owner"], number) in db.data["templates"]:
+            return await message.answer("У вас уже есть оффер с таким номером. Введите другой номер.")
         draft["number"] = number
     elif step == "amount":
         if skip:
@@ -1664,7 +1806,9 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
     parts = cq.data.split(":")
     n = parts[1]
     act = parts[2] if len(parts) > 2 else "card"
-    tpl = db.data["templates"].get(n)
+    owner = cq.from_user.id
+    key = tpl_key(owner, n)
+    tpl = db.data["templates"].get(key)
     if not tpl:
         return await cq.answer("Оффер не найден", show_alert=True)
 
@@ -1672,7 +1816,7 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
         await state.clear()
         await show(cq, card_text(n, tpl), card_kb(n))
     elif act == "e" and parts[3] in TPL_TITLES:  # число / текст {v4} / ссылка {v4}
-        await ask_value(cq, state, f"tpl:{n}", parts[3], f"t:{n}")
+        await ask_value(cq, state, f"tpl:{owner}:{n}", parts[3], f"t:{n}")
     elif act == "v3":  # переключатель звёзды ⇄ GRAM ⇄ рубли
         tpl["v3_choice"] = {"stars": "gram", "gram": "rub", "rub": "usdt", "usdt": "stars"}.get(tpl["v3_choice"], "stars")
         db.save()
@@ -1701,7 +1845,7 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
     elif act == "del":
         await show(cq, f"Удалить оффер №{n}?", kb([("🗑 Да, удалить", f"t:{n}:delok"), ("✖️ Отмена", f"t:{n}")]))
     elif act == "delok":
-        db.data["templates"].pop(n, None)
+        db.data["templates"].pop(key, None)
         db.save()
         await a_tpls(cq, state)
     else:
@@ -1714,7 +1858,7 @@ async def a_pres(cq: CallbackQuery, state: FSMContext):
     await state.clear()
     rows = [[(name, f"p:{code}")] for code, name in LANGS.items()] + [[("⬅️ Назад", "a:menu")]]
     await show(cq, "🗂 <b>Постоянные офферы</b>\nВыберите язык. Эти тексты общие для всех офферов "
-                   "этого языка; в них используются переменные {v1}…{v5}.", kb(*rows))
+                   "этого языка (и для всех админов); в них используются переменные {v1}…{v5}.", kb(*rows))
 
 
 @admin.callback_query(F.data.startswith("p:"))
@@ -1781,9 +1925,12 @@ async def on_value(message: Message, state: FSMContext):
             return
         db.data["presets"][lang][key] = value
         back = f"p:{lang}"
-    else:  # tpl:<n>
-        n = target[4:]
-        tpl = db.data["templates"][n]
+    else:  # tpl:<owner>:<n>
+        _, owner, n = target.split(":")
+        tpl = db.data["templates"].get(tpl_key(owner, n))
+        if tpl is None:
+            await state.clear()
+            return await message.answer("Оффер уже удалён.")
         back = f"t:{n}"
         if key == "amount":
             if not AMOUNT_RE.match(text):
