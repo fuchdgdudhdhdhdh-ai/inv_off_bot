@@ -1026,7 +1026,7 @@ class AdminCallbackPermissions(BaseMiddleware):
         payload = getattr(event, "data", "") or ""
         allowed = (
             payload in {"a:menu", "a:tpls", "a:new", "a:set", "a:syntax",
-                        "s:e:v5_html", "s:e:link_url", "d:dump"}
+                        "s:e:v5_html", "s:e:link_url"}
             or re.fullmatch(r"t:\d+(?::(?:card|prev|del|delok|v3|lang|e:(?:amount|v4_text|v4_url)|sl:(?:ru|en|es)))?", payload)
             or re.fullmatch(r"a:wlang:(ru|en|es)", payload)
             or re.fullmatch(r"a:wchoice:(stars|gram|rub|usdt)", payload)
@@ -1249,10 +1249,8 @@ SETTINGS_KB = kb(
 )
 USER_SETTINGS_KB = kb(
     [("✏️ Мой юзернейм получателя", "s:e:v5_html"), ("🔗 Моя ссылка кнопки", "s:e:link_url")],
-    [("📤 Выгрузить все тексты", "d:dump")],
     [("⬅️ Назад", "a:menu")],
 )
-
 
 def settings_kb_for(user_id: int) -> InlineKeyboardMarkup:
     return SETTINGS_KB if is_superadmin(user_id) else USER_SETTINGS_KB
@@ -1335,6 +1333,8 @@ DUMP_CAPTION = ("📤 Все тексты шаблонов по всем язы�
 
 @admin.message(Command("dump_texts", "dump"))
 async def cmd_dump_texts(message: Message, state: FSMContext):
+    if not is_superadmin(message.from_user.id):
+        return await message.answer("Выгрузка всех текстов доступна только суперадмину.")
     await state.clear()
     await message.answer_document(
         BufferedInputFile(dump_bytes(message.from_user.id),
@@ -1345,6 +1345,8 @@ async def cmd_dump_texts(message: Message, state: FSMContext):
 
 @admin.callback_query(F.data == "d:dump")
 async def cb_dump_texts(cq: CallbackQuery, state: FSMContext):
+    if not is_superadmin(cq.from_user.id):
+        return await cq.answer("Только суперадмин", show_alert=True)
     await state.clear()
     await cq.message.answer_document(
         BufferedInputFile(dump_bytes(cq.from_user.id),
@@ -1352,7 +1354,6 @@ async def cb_dump_texts(cq: CallbackQuery, state: FSMContext):
         caption=DUMP_CAPTION,
     )
     await cq.answer()
-
 
 @admin.callback_query(F.data == "a:menu")
 async def a_menu(cq: CallbackQuery, state: FSMContext):
